@@ -1,11 +1,18 @@
 import * as vscode from 'vscode';
+import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDashHtml } from './pages/dash';
 import { getSettingsHtml } from './pages/settings'; // Passe den Pfad an, falls nötig
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('Extension "coding-forever" ist aktiv mit Agentic-Power.');
+
+    // --- 1. DATEN-ÜBERNAHME & MIGRATION BEI INSTALLATION/UPDATE ---
+    await handleDataMigration(context);
+
+    // --- 2. AUTOMATISCHER GITHUB UPDATE-CHECK ---
+    checkForGitHubUpdates(context);
 
     // 1. Chat Tab öffnen
     context.subscriptions.push(
@@ -54,6 +61,87 @@ export function activate(context: vscode.ExtensionContext) {
             }
         })
     );
+}
+
+// Funktion 1: Prüft auf alte Versionen/Daten und übernimmt sie
+async function handleDataMigration(context: vscode.ExtensionContext) {
+    const currentVersion = context.extension.packageJSON.version;
+    const storedVersion = context.globalState.get<string>('codingForeverVersion');
+
+    if (!storedVersion) {
+        // Frische Installation – prüfen ob es ältere Configs/GlobalStates gab
+        console.log('Coding Forever: Keine vorherige Version gefunden. Frische Einrichtung.');
+        await context.globalState.update('codingForeverVersion', currentVersion);
+    } else if (storedVersion !== currentVersion) {
+        // Update-Fall: Alte Version war da. Deine Einstellungen in vscode.workspace.getConfiguration 
+        // und context.globalState / secrets bleiben ohnehin erhalten. 
+        console.log(`Coding Forever: Upgrade von v${storedVersion} auf v${currentVersion}. Alte Daten wurden übernommen.`);
+        
+        // Hier könntest du bei Bedarf Daten aus der alten Version transformieren
+        await context.globalState.update('codingForeverVersion', currentVersion);
+    }
+}
+
+// Funktion 2: Zieht Updates direkt von deinem GitHub-Repo
+function checkForGitHubUpdates(context: vscode.ExtensionContext, manual: boolean = false) {
+    const currentVersion = context.extension.packageJSON.version;
+    
+    const options = {
+        hostname: 'api.github.com',
+        path: '/repos/peter1965p/coding-forever-gemini/releases/latest',
+        headers: { 'User-Agent': 'Coding-Forever-Extension' }
+    };
+
+    https.get(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', async () => {
+            try {
+                if (res.statusCode !== 200) {
+                    if (manual) {
+                        vscode.window.showInformationMessage('Kein GitHub-Release gefunden oder Verbindung fehlgeschlagen.');
+                    }
+                    return;
+                }
+
+                const release = JSON.parse(data);
+                const latestVersion = release.tag_name.replace('v', '');
+
+                // Versionsvergleich
+                if (isNewerVersion(currentVersion, latestVersion)) {
+                    const action = await vscode.window.showInformationMessage(
+                        `🚀 Ein neues Update für Coding Forever ist verfügbar (v${latestVersion}).`,
+                        'GitHub Releases öffnen', 'Später'
+                    );
+                    if (action === 'GitHub Releases öffnen') {
+                        vscode.env.openExternal(vscode.Uri.parse(release.html_url));
+                    }
+                } else if (manual) {
+                    vscode.window.showInformationMessage(`Coding Forever ist auf dem neuesten Stand (v${currentVersion}).`);
+                }
+            } catch (e) {
+                console.error('Fehler beim Parsen der GitHub Updates:', e);
+            }
+        });
+    }).on('error', (err) => {
+        console.error('Update-Check fehlgeschlagen:', err);
+    });
+}
+
+function isNewerVersion(current: string, latest: string): boolean {
+    const currParts = current.split('.').map(Number);
+    const latestParts = latest.split('.').map(Number);
+    for (let i = 0; i < Math.max(currParts.length, latestParts.length); i++) {
+        const c = currParts[i] || 0;
+        const l = latestParts[i] || 0;
+        if (l > c) {
+            return true;
+        }
+        if (l < c) {
+            return false;
+        }
+    }
+    return false;
 }
 
 async function listWorkspaceFiles(): Promise<string> {

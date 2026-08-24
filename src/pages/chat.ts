@@ -34,6 +34,74 @@ export function getChatHtml(apiKey: string, bypass: boolean, auto: boolean): str
                 font-size: 12px;
                 overflow: hidden;
             }
+            
+            /* Linke Sidebar (Verlauf & Navigation) */
+            .sidebar {
+                width: 240px;
+                background-color: var(--bg-sidebar);
+                border-right: 1px solid var(--border-color);
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                padding: 12px;
+                box-sizing: border-box;
+            }
+            .sidebar-top {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .nav-btn {
+                background: transparent;
+                border: none;
+                color: var(--text-main);
+                padding: 8px 12px;
+                text-align: left;
+                font-size: 12px;
+                border-radius: 6px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                width: 100%;
+            }
+            .nav-btn:hover {
+                background-color: var(--hover-bg);
+            }
+            .nav-btn.primary {
+                background-color: #1e293b;
+                color: var(--accent-cyan);
+                font-weight: bold;
+                border: 1px solid var(--border-color);
+            }
+            
+            .history-section {
+                margin-top: 16px;
+                overflow-y: auto;
+                max-height: calc(100vh - 180px);
+            }
+            .history-title {
+                font-size: 10px;
+                text-transform: uppercase;
+                color: var(--text-muted);
+                letter-spacing: 0.05em;
+                margin-bottom: 8px;
+                padding-left: 4px;
+            }
+            .history-item {
+                font-size: 11px;
+                color: var(--text-muted);
+                padding: 6px 10px;
+                border-radius: 4px;
+                cursor: pointer;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .history-item:hover {
+                background-color: var(--hover-bg);
+                color: var(--text-main);
+            }
 
             .header-bar {
                 display: flex;
