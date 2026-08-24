@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Hintergrund / Deichlinie -->
+  <path fill="var(--vscode-icon-foreground, #C5C5C5)" d="M2 19h20v2H2z"/>
+  <!-- Klimahaus / Kugelform links -->
+  <path fill="var(--vscode-icon-foreground, #C5C5C5)" d="M4 17c0-1.5 1-2 2-2s2 .5 2 2H4z"/>
+  <!-- ATLANTIC Hotel Sail City (Das markante Segel mit Mast) -->
+  <path fill="var(--vscode-icon-foreground, #C5C5C5)" d="M10 21V8l5-2v15h-5z"/>
+  <path stroke="var(--vscode-icon-foreground, #C5C5C5)" stroke-width="0.8" d="M15 6V2"/>
+</svg>

@@ -1,0 +1,99 @@
+{
+  "name": "coding-forever",
+  "displayName": "Coding Forever",
+  "description": "Direct Gemini Flash Integration without Limits",
+  "version": "1.5.1",
+  "publisher": "PeterPaeffgen",
+  "author": {
+    "name": "Peter Päffgen",
+    "email": "news24regional@gmail.com"
+  },
+  "icon": "media/logo.png",
+  "engines": {
+    "vscode": "^1.134.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codingForeverSidebar",
+          "title": "Coding Forever",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codingForeverSidebar": [
+        {
+          "type": "webview",
+          "id": "codingForeverView",
+          "name": "AI Chat Workspace"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "coding-forever.openDashboard",
+        "title": "Coding Forever: Dashboard öffnen",
+        "icon": "$(home)"
+      },
+      {
+        "command": "coding-forever.openSettings",
+        "title": "Coding Forever: Einstellungen",
+        "icon": "$(gear)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "coding-forever.openDashboard",
+          "when": "view == codingForeverView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "coding-forever.openSettings",
+          "when": "view == codingForeverView",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.134.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.5.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "@google/genai": "^2.18.0"
+  }
+}
