@@ -38,8 +38,10 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('codingForeverView', {
             resolveWebviewView(view) {
+                const pkg = context.extension.packageJSON;
+                view.webview.html = getChatHtml(context, pkg.name, pkg.version);
                 view.webview.options = { enableScripts: true };
-                view.webview.html = getChatHtml(context);
+                view.webview.html = getChatHtml(context, pkg.name, pkg.version);
 
                 view.webview.onDidReceiveMessage(async msg => {
                     try {

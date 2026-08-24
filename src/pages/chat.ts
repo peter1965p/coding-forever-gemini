@@ -1,40 +1,35 @@
-export function getChatHtml(apiKey: string, bypass: boolean, auto: boolean): string {
+import * as vscode from 'vscode';
+
+export function getChatHtml(context: vscode.ExtensionContext, extName: string = 'Coding Forever', extVersion: string = '1.0.0'): string {
     return `<!DOCTYPE html>
     <html lang="de">
     <head>
         <meta charset="UTF-8">
+        <title>${extName} — Chat & Verlauf</title>
         <style>
             :root {
+                --bg-sidebar: #0f172a;
                 --bg-main: #0b0f19;
                 --bg-card: #111827;
                 --border-color: #1f2937;
+                --accent-cyan: #06b6d4;
+                --accent-orange: #f59e0b;
                 --text-main: #f9fafb;
                 --text-muted: #9ca3af;
-                --accent-teal: #06b6d4;
-                --accent-green: #10b981;
-                --accent-orange: #f59e0b;
-                --input-bg: #1f2937;
-                --bubble-user: #1f2937;
-                --bubble-ai: #0f172a;
+                --hover-bg: #1e293b;
             }
-
-            *, *::before, *::after {
+            body {
+                font-family: var(--vscode-font-family, sans-serif);
+                background-color: var(--bg-main);
+                color: var(--text-main);
+                margin: 0;
+                padding: 0;
+                display: flex;
+                height: 100vh;
+                overflow: hidden;
                 box-sizing: border-box;
             }
 
-            body {
-                font-family: var(--vscode-font-family);
-                margin: 0;
-                padding: 0;
-                background-color: var(--bg-main);
-                color: var(--text-main);
-                display: flex;
-                flex-direction: column;
-                height: 100vh;
-                font-size: 12px;
-                overflow: hidden;
-            }
-            
             /* Linke Sidebar (Verlauf & Navigation) */
             .sidebar {
                 width: 240px;
@@ -103,179 +98,210 @@ export function getChatHtml(apiKey: string, bypass: boolean, auto: boolean): str
                 color: var(--text-main);
             }
 
-            .header-bar {
+            /* Hauptbereich (Chat) */
+            .main-chat {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                background-color: var(--bg-main);
+                height: 100vh;
+                box-sizing: border-box;
+            }
+            .chat-header {
+                padding: 12px 16px;
+                border-bottom: 1px solid var(--border-color);
+                font-size: 13px;
+                font-weight: bold;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 8px 12px;
-                border-bottom: 1px solid var(--border-color);
                 background-color: var(--bg-card);
-                font-weight: 600;
             }
-
-            .chat-container {
+            .chat-messages {
                 flex: 1;
+                padding: 16px;
                 overflow-y: auto;
-                padding: 10px;
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 12px;
             }
-
             .message {
-                max-width: 95%;
-                padding: 8px 10px;
-                border-radius: 6px;
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-size: 12px;
+                max-width: 85%;
                 line-height: 1.4;
-                border: 1px solid var(--border-color);
-                word-break: break-word;
             }
-
             .message.user {
-                background-color: var(--bubble-user);
+                background-color: #1e293b;
                 align-self: flex-end;
-                border-color: rgba(6, 182, 212, 0.3);
-                white-space: pre-wrap;
+                border: 1px solid var(--border-color);
             }
-
-            .message.ai {
-                background-color: var(--bubble-ai);
+            .message.assistant {
+                background-color: var(--bg-card);
                 align-self: flex-start;
+                border: 1px solid var(--border-color);
             }
 
-            .input-container {
-                padding: 10px;
+            /* Eingabebereich unten */
+            .chat-input-area {
+                padding: 12px 16px;
                 background-color: var(--bg-card);
                 border-top: 1px solid var(--border-color);
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
+                gap: 8px;
             }
-
-            .controls-row {
-                display: flex;
-                gap: 6px;
-            }
-
-            select, textarea {
-                background-color: var(--input-bg);
-                border: 1px solid var(--border-color);
-                color: var(--text-main);
-                padding: 6px 8px;
-                border-radius: 4px;
-                font-family: inherit;
-                font-size: 11px;
-            }
-
-            select {
-                flex: 1;
-            }
-
             textarea {
                 width: 100%;
-                height: 55px;
+                background: #0b0f19;
+                border: 1px solid var(--border-color);
+                color: #fff;
+                padding: 10px;
+                border-radius: 6px;
+                font-size: 12px;
                 resize: none;
+                height: 50px;
+                box-sizing: border-box;
+                font-family: inherit;
             }
-
-            textarea:focus, select:focus {
+            textarea:focus {
                 outline: none;
-                border-color: var(--accent-teal);
+                border-color: var(--accent-cyan);
             }
-
-            .btn {
-                background-color: var(--accent-teal);
-                color: #0b0f19;
+            .chat-controls {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            select {
+                background: #0b0f19;
+                border: 1px solid var(--border-color);
+                color: var(--text-main);
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            button.send-btn {
+                background: var(--accent-cyan);
+                color: var(--bg-main);
                 border: none;
                 padding: 6px 14px;
-                font-weight: 600;
+                font-weight: bold;
                 border-radius: 4px;
                 cursor: pointer;
                 font-size: 11px;
-                white-space: nowrap;
             }
-
-            .btn:hover { opacity: 0.9; }
-
-            .badges {
-                font-size: 10px;
-                color: var(--text-muted);
-                display: flex;
-                justify-content: space-between;
-                padding: 0 2px;
-            }
+            button.send-btn:hover { opacity: 0.9; }
         </style>
     </head>
     <body>
+        <!-- Linke Sidebar mit Verlauf & Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-top">
+                <button class="nav-btn primary" id="newChatBtn">
+                    <span>✏️</span> Neuer Chat
+                </button>
+                <button class="nav-btn" id="openDashBtn">
+                    <span>📊</span> Dashboard öffnen
+                </button>
+                <button class="nav-btn" id="openSettingsBtn">
+                    <span>⚙️</span> Einstellungen
+                </button>
 
-        <div class="header-bar">
-            <span>💬 Coding Forever Chat</span>
-            <span style="font-size: 10px; color: ${apiKey ? 'var(--accent-green)' : 'var(--accent-orange)'};">${apiKey ? '● Active' : '○ No Key'}</span>
+                <div class="history-section">
+                    <div class="history-title">Verlauf</div>
+                    <div id="historyList">
+                        <div class="history-item">Extension initialisiert</div>
+                        <div class="history-item">Refactoring dash.ts</div>
+                        <div class="history-item">GitHub Update prüfen</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding-top: 8px; border-top: 1px solid var(--border-color);">
+                ${extName} v${extVersion}
+            </div>
         </div>
 
-        <div class="chat-container" id="chatHistory">
-            <div class="message ai">Moin! Bereit für automatische Dateisuche & Code-Erstellung im Bypass-Modus.</div>
-        </div>
+        <!-- Rechter Haupt-Chat-Bereich -->
+        <div class="main-chat">
+            <div class="chat-header">
+                <span>${extName} — Agentic Chat</span>
+                <span style="font-size: 11px; color: var(--accent-orange);">Bypass [ON]</span>
+            </div>
 
-        <div class="input-container">
-            <div class="badges">
-                <span>Bypass: <strong style="color: ${bypass ? 'var(--accent-green)' : 'var(--text-muted)'};">${bypass ? 'ON' : 'OFF'}</strong></span>
-                <span>Auto: <strong style="color: ${auto ? 'var(--accent-green)' : 'var(--text-muted)'};">${auto ? 'ON' : 'OFF'}</strong></span>
+            <div class="chat-messages" id="chatMessages">
+                <div class="message assistant">Moin Peter! Coding Forever ist bereit. Wie kann ich dir heute helfen? 🚀</div>
             </div>
-            <div class="controls-row">
-                <select id="cModel">
-                    <option value="gemini-3.7-flash">gemini-3.7-flash</option>
-                    <option value="gemini-3.6-flash">gemini-3.6-flash</option>
-                    <option value="gemini-3.5-flash-lite" selected>gemini-3.5-flash-lite</option>
-                </select>
-                <button class="btn" id="sendBtn">Senden</button>
+
+            <div class="chat-input-area">
+                <textarea id="promptInput" placeholder="Was soll gebaut werden? (Ctrl+Enter zum Senden)"></textarea>
+                <div class="chat-controls">
+                    <select id="modelSelect">
+                        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+                        <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+                        <option value="gemini-3.5-flash-lite" selected>gemini-3.5-flash-lite</option>
+                    </select>
+                    <button class="send-btn" id="sendBtn">Senden</button>
+                </div>
             </div>
-            <textarea id="cInput" placeholder="Describe what to build or fix..."></textarea>
         </div>
 
         <script>
             const vscode = acquireVsCodeApi();
 
+            const promptInput = document.getElementById('promptInput');
             const sendBtn = document.getElementById('sendBtn');
-            const cInput = document.getElementById('cInput');
-            const cModel = document.getElementById('cModel');
-            const history = document.getElementById('chatHistory');
+            const chatMessages = document.getElementById('chatMessages');
+            const modelSelect = document.getElementById('modelSelect');
 
-            function sendChat() {
-                if (!cInput || !cModel) return;
-                const text = cInput.value.trim();
-                const model = cModel.value;
-                if (!text) return;
-
-                appendMessage(text, 'user');
-                cInput.value = '';
-
-                vscode.postMessage({ type: 'runChat', prompt: text, model: model });
-            }
-
-            sendBtn.addEventListener('click', () => {
-                sendChat();
+            document.getElementById('newChatBtn').addEventListener('click', () => {
+                chatMessages.innerHTML = '<div class="message assistant">Neuer Chat gestartet. Was gibt es zu tun?</div>';
+            });
+            document.getElementById('openDashBtn').addEventListener('click', () => {
+                vscode.postMessage({ type: 'openDashboard' });
+            });
+            document.getElementById('openSettingsBtn').addEventListener('click', () => {
+                vscode.postMessage({ type: 'openSettings' });
             });
 
-            cInput.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    sendChat();
+            function sendMessage() {
+                const text = promptInput.value.trim();
+                if (!text) return;
+
+                const userDiv = document.createElement('div');
+                userDiv.className = 'message user';
+                userDiv.innerText = text;
+                chatMessages.appendChild(userDiv);
+                promptInput.value = '';
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                vscode.postMessage({
+                    type: 'runChat',
+                    prompt: text,
+                    model: modelSelect.value,
+                    bypass: true,
+                    autoAccept: true
+                });
+            }
+
+            sendBtn.addEventListener('click', sendMessage);
+            promptInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    sendMessage();
                 }
             });
 
-            function appendMessage(text, sender) {
-                if (!history) return;
-                const div = document.createElement('div');
-                div.className = 'message ' + sender;
-                div.innerText = text;
-                history.appendChild(div);
-                history.scrollTop = history.scrollHeight;
-            }
-
-            window.addEventListener('message', e => {
-                const message = e.data;
-                if (message && message.type === 'response') {
-                    appendMessage(message.text, 'ai');
+            window.addEventListener('message', event => {
+                const message = event.data;
+                if (message.type === 'response' || message.text) {
+                    const botDiv = document.createElement('div');
+                    botDiv.className = 'message assistant';
+                    botDiv.innerText = message.text || message.content;
+                    chatMessages.appendChild(botDiv);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
                 }
             });
         </script>
