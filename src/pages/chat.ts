@@ -1,7 +1,11 @@
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
-export function getChatHtml(context: vscode.ExtensionContext, extName: string = 'Coding Forever', extVersion: string = '1.0.0'): string {
-    return `<!DOCTYPE html>
+export function getChatHtml(
+  context: vscode.ExtensionContext,
+  extName: string = "Coding Forever",
+  extVersion: string = "1.0.0",
+): string {
+  return `<!DOCTYPE html>
     <html lang="de">
     <head>
         <meta charset="UTF-8">
@@ -236,12 +240,11 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
                     <span>⚙️</span> Einstellungen
                 </button>
 
+                <!-- HTML in der Sidebar -->
                 <div class="history-section">
-                    <div class="history-title">Verlauf</div>
+                    <div class="history-title">Aktionen & Verlauf</div>
                     <div id="historyList">
-                        <div class="history-item">Extension initialisiert</div>
-                        <div class="history-item">Refactoring dash.ts</div>
-                        <div class="history-item">GitHub Update prüfen</div>
+                        <div class="history-item" id="checkUpdatesBtn">🔄 GitHub Update prüfen</div>
                     </div>
                 </div>
             </div>
@@ -300,6 +303,10 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
             });
             document.getElementById('openSettingsBtn').addEventListener('click', () => {
                 vscode.postMessage({ type: 'openSettings' });
+            });
+            
+            document.getElementById('checkUpdatesBtn').addEventListener('click', () => {
+                vscode.postMessage({ type: 'checkUpdates' });
             });
 
             function sendMessage() {

@@ -36,6 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    // Webview View Provider (Sidebar)
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('codingForeverView', {
             resolveWebviewView(view) {
@@ -57,6 +58,8 @@ export async function activate(context: vscode.ExtensionContext) {
                             DashboardPanel.createOrShow(context);
                         } else if (msg.type === 'openSettings') {
                             SettingsPanel.createOrShow(context);
+                        } else if (msg.type === 'checkUpdates') {
+                            checkForGitHubUpdates(context, true);
                         }
                     } catch (e: any) {
                         console.error("Fehler im Message Handler:", e);
@@ -119,10 +122,16 @@ function checkForGitHubUpdates(context: vscode.ExtensionContext, manual: boolean
                 }
             } catch (e) {
                 console.error('Fehler beim Parsen der GitHub Updates:', e);
+                if (manual) {
+                    vscode.window.showErrorMessage('Fehler beim Verarbeiten der Update-Daten.');
+                }
             }
         });
     }).on('error', (err) => {
         console.error('Update-Check fehlgeschlagen:', err);
+        if (manual) {
+            vscode.window.showErrorMessage('Netzwerkfehler beim Prüfen auf Updates.');
+        }
     });
 }
 
@@ -268,7 +277,7 @@ async function applyCodeToActiveEditor(code: string) {
     }
 }
 
-// Panel-Klasse für den Chat
+// Panel-Klasse für den Chat (Editor Tab)
 class CodingForeverPanel {
     public static currentPanel: CodingForeverPanel | undefined;
     private readonly _panel: vscode.WebviewPanel;
@@ -279,17 +288,51 @@ class CodingForeverPanel {
         this._panel.webview.options = { enableScripts: true };
         const pkg = context.extension.packageJSON;
         this._panel.webview.html = getChatHtml(context, pkg.name, pkg.version);
+
+        this._panel.webview.onDidReceiveMessage(async msg => {
+            try {
+                if (msg.type === 'runChat') {
+                    await handleAgent(this._panel, context, msg.prompt, msg.model, msg.bypass, msg.autoAccept);
+                } else if (msg.type === 'applyCodeToEditor') {
+                    await applyCodeToActiveEditor(msg.code);
+                } else if (msg.type === 'executeCommand') {
+                    await runTerminalCommand(msg.command);
+                } else if (msg.type === 'openDashboard') {
+                    DashboardPanel.createOrShow(context);
+                } else if (msg.type === 'openSettings') {
+                    SettingsPanel.createOrShow(context);
+                } else if (msg.type === 'checkUpdates') {
+                    checkForGitHubUpdates(context, true);
+                }
+            } catch (e: any) {
+                console.error("Fehler im Panel Message Handler:", e);
+            }
+        }, null, this._disposables);
+
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
 
     public static createOrShow(context: vscode.ExtensionContext) {
-        const panel = vscode.window.createWebviewPanel('codingForeverPanel', 'Coding Forever Chat', vscode.ViewColumn.One, { enableScripts: true });
+        const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
+
+        if (CodingForeverPanel.currentPanel) {
+            CodingForeverPanel.currentPanel._panel.reveal(column);
+            return;
+        }
+
+        const panel = vscode.window.createWebviewPanel('codingForeverPanel', 'Coding Forever Chat', column || vscode.ViewColumn.One, { enableScripts: true });
         CodingForeverPanel.currentPanel = new CodingForeverPanel(panel, context);
     }
 
     public dispose() {
         CodingForeverPanel.currentPanel = undefined;
         this._panel.dispose();
+        while (this._disposables.length) {
+            const x = this._disposables.pop();
+            if (x) {
+                x.dispose();
+            }
+        }
     }
 }
 
