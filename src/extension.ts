@@ -107,7 +107,7 @@ function checkForGitHubUpdates(context: vscode.ExtensionContext, manual: boolean
                 }
 
                 const release = JSON.parse(data);
-                const latestVersion = release.tag_name.replace('v', '');
+                const latestVersion = release.tag_name.replace(/^v/, '');
 
                 if (isNewerVersion(currentVersion, latestVersion)) {
                     const action = await vscode.window.showInformationMessage(
@@ -201,7 +201,7 @@ Für Terminal-Befehle (nur wenn AutoAccept aktiv ist):
 CMD: npm install ...`;
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url = `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:generateContent?key=${apiKey}`;
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -267,14 +267,35 @@ async function confirmAction(message: string): Promise<boolean> {
     return answer === 'Ja, ausführen';
 }
 
-async function applyCodeToActiveEditor(code: string) {
+// Gefixte Funktion: Führe Code sauber in den aktiven Editor ein
+async function applyCodeToActiveEditor(rawCode: string) {
     const editor = vscode.window.activeTextEditor;
-    if (editor) {
-        await editor.edit(editBuilder => {
-            editBuilder.replace(editor.selection, code);
-        });
-        vscode.window.showInformationMessage('Code in Editor übernommen!');
+    if (!editor) {
+        vscode.window.showErrorMessage('Kein aktiver Editor geöffnet!');
+        return;
     }
+
+    // Eventuelle Markdown-Codeblöcke bereinigen (falls der Chat-Output ```typescript ... ``` mitgesendet hat)
+    let cleanCode = rawCode.replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '');
+
+    const selection = editor.selection;
+
+    await editor.edit(editBuilder => {
+        // Wenn Text selektiert ist, ersetze nur die Selektion
+        if (!selection.isEmpty) {
+            editBuilder.replace(selection, cleanCode);
+        } else {
+            // Wenn NICHTS selektiert ist, ersetze das GESAMTE Dokument sauber!
+            const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+            const fullRange = new vscode.Range(
+                new vscode.Position(0, 0),
+                lastLine.range.end
+            );
+            editBuilder.replace(fullRange, cleanCode);
+        }
+    });
+
+    vscode.window.showInformationMessage('Code erfolgreich in den Editor übernommen!');
 }
 
 // Panel-Klasse für den Chat (Editor Tab)
