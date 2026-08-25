@@ -1,4 +1,6 @@
-export function getSettingsHtml(apiKey: string, bypass: boolean, autoAccept: boolean, chatFont: string): string {
+import * as vscode from 'vscode';
+
+export function getSettingsHtml(apiKey: string = '', isFirstRun: boolean = false, isUpgrade: boolean = false, chatFont: string = 'var(--vscode-font-family)'): string {
     return `<!DOCTYPE html>
     <html lang="de">
     <head>
@@ -10,122 +12,131 @@ export function getSettingsHtml(apiKey: string, bypass: boolean, autoAccept: boo
                 --bg-card: #111827;
                 --border-color: #1f2937;
                 --accent-cyan: #06b6d4;
-                --accent-orange: #f59e0b;
                 --text-main: #f9fafb;
                 --text-muted: #9ca3af;
+                --hover-bg: #1e293b;
             }
             body {
-                font-family: ${chatFont}, sans-serif;
+                font-family: var(--vscode-font-family, sans-serif);
                 background-color: var(--bg-main);
                 color: var(--text-main);
                 margin: 0;
                 padding: 24px;
-                box-sizing: border-box;
-                height: 100vh;
-                overflow-y: auto;
             }
-            .header-bar {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 24px;
-                border-bottom: 1px solid var(--border-color);
-                padding-bottom: 16px;
-            }
-            .app-title {
-                font-size: 20px;
-                font-weight: bold;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                color: var(--text-main);
-            }
-            .app-title span { color: var(--accent-orange); }
-            
-            .panel {
-                background-color: var(--bg-card);
+            .container {
+                max-width: 600px;
+                margin: 0 auto;
+                background: var(--bg-card);
                 border: 1px solid var(--border-color);
                 border-radius: 8px;
                 padding: 24px;
-                max-width: 600px;
-                box-sizing: border-box;
             }
-            .panel-title {
-                font-size: 14px;
-                font-weight: bold;
-                margin-bottom: 20px;
+            h1 { font-size: 18px; margin-top: 0; color: var(--text-main); }
+            .form-group { margin-bottom: 20px; }
+            label { display: block; font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; letter-spacing: 0.05em; }
+            
+            /* Password-Input mit Auge Wrapper */
+            .input-wrapper {
+                position: relative;
+                display: flex;
+                align-items: center;
             }
-            .form-group {
-                margin-bottom: 20px;
-            }
-            label {
-                display: block;
-                font-size: 11px;
-                color: var(--text-muted);
-                margin-bottom: 8px;
-                text-transform: uppercase;
-            }
-            input[type="text"], select {
+            input[type="password"], input[type="text"] {
                 width: 100%;
-                background: #1f2937;
-                border: 1px solid #374151;
+                background: #0b0f19;
+                border: 1px solid var(--border-color);
                 color: #fff;
-                padding: 10px;
+                padding: 8px 36px 8px 10px;
                 border-radius: 6px;
                 font-size: 12px;
                 box-sizing: border-box;
-                font-family: inherit;
             }
-            input[type="text"]:focus, select:focus {
-                outline: none;
-                border-color: var(--accent-cyan);
+            input:focus { outline: none; border-color: var(--accent-cyan); }
+            
+            .toggle-eye {
+                position: absolute;
+                right: 8px;
+                background: transparent;
+                border: none;
+                color: var(--text-muted);
+                cursor: pointer;
+                font-size: 14px;
+                padding: 2px 4px;
             }
-            button {
+            .toggle-eye:hover { color: var(--text-main); }
+
+            select {
+                width: 100%;
+                background: #0b0f19;
+                border: 1px solid var(--border-color);
+                color: #fff;
+                padding: 8px;
+                border-radius: 6px;
+                font-size: 12px;
+            }
+
+            button.save-btn {
                 background: var(--accent-cyan);
                 color: var(--bg-main);
                 border: none;
-                padding: 10px 20px;
+                padding: 8px 16px;
                 font-weight: bold;
                 border-radius: 6px;
                 cursor: pointer;
                 font-size: 12px;
             }
-            button:hover { opacity: 0.9; }
+            button.save-btn:hover { opacity: 0.9; }
         </style>
     </head>
     <body>
-        <div class="header-bar">
-            <div class="app-title"><span>⚡</span> Coding Forever — Einstellungen</div>
-        </div>
-
-        <div class="panel">
-            <div class="panel-title">Extension Konfiguration</div>
+        <div class="container">
+            <h1>⚡ Coding Forever — Einstellungen</h1>
             
             <div class="form-group">
-                <label for="apiKeyInput">Gemini API Key</label>
-                <input type="text" id="apiKeyInput" value="${apiKey}" placeholder="Dein API-Schlüssel...">
+                <label>Gemini API Key</label>
+                <div class="input-wrapper">
+                    <input type="password" id="apiKeyInput" value="${apiKey}" placeholder="Deinen API Key hier einfügen...">
+                    <button class="toggle-eye" id="toggleEyeBtn" title="Key anzeigen/verbergen">👁️</button>
+                </div>
             </div>
 
             <div class="form-group">
-                <label for="fontSelect">UI Font-Familie</label>
+                <label>UI Font-Familie</label>
                 <select id="fontSelect">
-                    <option value="var(--vscode-font-family)" ${chatFont === 'var(--vscode-font-family)' ? 'selected' : ''}>Standard VS Code Font</option>
+                    <option value="var(--vscode-font-family)" ${chatFont.includes('vscode') ? 'selected' : ''}>VS Code Standard</option>
                     <option value="Arial" ${chatFont === 'Arial' ? 'selected' : ''}>Arial</option>
-                    <option value="Courier New" ${chatFont === 'Courier New' ? 'selected' : ''}>Courier New</option>
-                    <option value="Segoe UI" ${chatFont === 'Segoe UI' ? 'selected' : ''}>Segoe UI</option>
+                    <option value="Consolas" ${chatFont === 'Consolas' ? 'selected' : ''}>Consolas (Monospace)</option>
+                    <option value="JetBrains Mono" ${chatFont === 'JetBrains Mono' ? 'selected' : ''}>JetBrains Mono</option>
                 </select>
             </div>
 
-            <button id="saveBtn">Einstellungen speichern</button>
+            <button class="save-btn" id="saveBtn">Einstellungen speichern</button>
         </div>
 
         <script>
             const vscode = acquireVsCodeApi();
-            
-            document.getElementById('saveBtn').addEventListener('click', () => {
-                const apikey = document.getElementById('apiKeyInput').value.trim();
-                const chatFont = document.getElementById('fontSelect').value;
-                vscode.postMessage({ type: 'saveSettings', apikey, chatFont });
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            const toggleEyeBtn = document.getElementById('toggleEyeBtn');
+            const fontSelect = document.getElementById('fontSelect');
+            const saveBtn = document.getElementById('saveBtn');
+
+            // Auge-Button Logik
+            toggleEyeBtn.addEventListener('click', () => {
+                if (apiKeyInput.type === 'password') {
+                    apiKeyInput.type = 'text';
+                    toggleEyeBtn.innerText = '🙈';
+                } else {
+                    apiKeyInput.type = 'password';
+                    toggleEyeBtn.innerText = '👁️';
+                }
+            });
+
+            saveBtn.addEventListener('click', () => {
+                vscode.postMessage({
+                    type: 'saveSettings',
+                    apikey: apiKeyInput.value.trim(),
+                    chatFont: fontSelect.value
+                });
             });
         </script>
     </body>
