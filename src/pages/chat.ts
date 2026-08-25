@@ -30,35 +30,45 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
                 box-sizing: border-box;
             }
 
-            /* Linke Sidebar (Verlauf & Navigation) */
+            /* Linke Sidebar (Flexibel & Einklappbar) */
             .sidebar {
-                width: 240px;
+                width: 200px;
+                min-width: 130px;
+                max-width: 260px;
                 background-color: var(--bg-sidebar);
                 border-right: 1px solid var(--border-color);
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
-                padding: 12px;
+                padding: 10px;
                 box-sizing: border-box;
+                transition: all 0.2s ease-in-out;
             }
+            .sidebar.collapsed {
+                display: none;
+            }
+
             .sidebar-top {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 6px;
             }
             .nav-btn {
                 background: transparent;
                 border: none;
                 color: var(--text-main);
-                padding: 8px 12px;
+                padding: 6px 8px;
                 text-align: left;
-                font-size: 12px;
+                font-size: 11px;
                 border-radius: 6px;
                 cursor: pointer;
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: 8px;
                 width: 100%;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
             .nav-btn:hover {
                 background-color: var(--hover-bg);
@@ -71,22 +81,22 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
             }
             
             .history-section {
-                margin-top: 16px;
+                margin-top: 12px;
                 overflow-y: auto;
                 max-height: calc(100vh - 180px);
             }
             .history-title {
-                font-size: 10px;
+                font-size: 9px;
                 text-transform: uppercase;
                 color: var(--text-muted);
                 letter-spacing: 0.05em;
-                margin-bottom: 8px;
+                margin-bottom: 6px;
                 padding-left: 4px;
             }
             .history-item {
                 font-size: 11px;
                 color: var(--text-muted);
-                padding: 6px 10px;
+                padding: 5px 8px;
                 border-radius: 4px;
                 cursor: pointer;
                 white-space: nowrap;
@@ -106,31 +116,47 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
                 background-color: var(--bg-main);
                 height: 100vh;
                 box-sizing: border-box;
+                min-width: 0;
             }
             .chat-header {
-                padding: 12px 16px;
+                padding: 10px 14px;
                 border-bottom: 1px solid var(--border-color);
-                font-size: 13px;
+                font-size: 12px;
                 font-weight: bold;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 background-color: var(--bg-card);
             }
+            .toggle-sidebar-btn {
+                background: transparent;
+                border: 1px solid var(--border-color);
+                color: var(--text-muted);
+                border-radius: 4px;
+                cursor: pointer;
+                padding: 2px 6px;
+                font-size: 11px;
+            }
+            .toggle-sidebar-btn:hover {
+                color: var(--text-main);
+                background-color: var(--hover-bg);
+            }
+
             .chat-messages {
                 flex: 1;
-                padding: 16px;
+                padding: 14px;
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
+                gap: 10px;
             }
             .message {
-                padding: 10px 14px;
+                padding: 8px 12px;
                 border-radius: 8px;
                 font-size: 12px;
-                max-width: 85%;
+                max-width: 90%;
                 line-height: 1.4;
+                word-break: break-word;
             }
             .message.user {
                 background-color: #1e293b;
@@ -145,7 +171,7 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
 
             /* Eingabebereich unten */
             .chat-input-area {
-                padding: 12px 16px;
+                padding: 10px 14px;
                 background-color: var(--bg-card);
                 border-top: 1px solid var(--border-color);
                 display: flex;
@@ -157,11 +183,11 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
                 background: #0b0f19;
                 border: 1px solid var(--border-color);
                 color: #fff;
-                padding: 10px;
+                padding: 8px;
                 border-radius: 6px;
                 font-size: 12px;
                 resize: none;
-                height: 50px;
+                height: 48px;
                 box-sizing: border-box;
                 font-family: inherit;
             }
@@ -173,12 +199,13 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                gap: 8px;
             }
             select {
                 background: #0b0f19;
                 border: 1px solid var(--border-color);
                 color: var(--text-main);
-                padding: 4px 8px;
+                padding: 4px 6px;
                 border-radius: 4px;
                 font-size: 11px;
             }
@@ -196,14 +223,14 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
         </style>
     </head>
     <body>
-        <!-- Linke Sidebar mit Verlauf & Navigation -->
-        <div class="sidebar">
+        <!-- Linke Sidebar -->
+        <div class="sidebar" id="sidebar">
             <div class="sidebar-top">
                 <button class="nav-btn primary" id="newChatBtn">
                     <span>✏️</span> Neuer Chat
                 </button>
                 <button class="nav-btn" id="openDashBtn">
-                    <span>📊</span> Dashboard öffnen
+                    <span>📊</span> Dashboard
                 </button>
                 <button class="nav-btn" id="openSettingsBtn">
                     <span>⚙️</span> Einstellungen
@@ -219,7 +246,7 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
                 </div>
             </div>
 
-            <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding-top: 8px; border-top: 1px solid var(--border-color);">
+            <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding-top: 6px; border-top: 1px solid var(--border-color);">
                 ${extName} v${extVersion}
             </div>
         </div>
@@ -227,7 +254,10 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
         <!-- Rechter Haupt-Chat-Bereich -->
         <div class="main-chat">
             <div class="chat-header">
-                <span>${extName} — Agentic Chat</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="toggle-sidebar-btn" id="toggleSidebarBtn" title="Sidebar umschalten">☰</button>
+                    <span>Agentic Chat</span>
+                </div>
                 <span style="font-size: 11px; color: var(--accent-orange);">Bypass [ON]</span>
             </div>
 
@@ -236,7 +266,7 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
             </div>
 
             <div class="chat-input-area">
-                <textarea id="promptInput" placeholder="Was soll gebaut werden? (Ctrl+Enter zum Senden)"></textarea>
+                <textarea id="promptInput" placeholder="Was soll gebaut werden? (Ctrl+Enter)..."></textarea>
                 <div class="chat-controls">
                     <select id="modelSelect">
                         <option value="gemini-3.7-flash">gemini-3.7-flash</option>
@@ -255,6 +285,12 @@ export function getChatHtml(context: vscode.ExtensionContext, extName: string = 
             const sendBtn = document.getElementById('sendBtn');
             const chatMessages = document.getElementById('chatMessages');
             const modelSelect = document.getElementById('modelSelect');
+            const sidebar = document.getElementById('sidebar');
+            const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+
+            toggleSidebarBtn.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+            });
 
             document.getElementById('newChatBtn').addEventListener('click', () => {
                 chatMessages.innerHTML = '<div class="message assistant">Neuer Chat gestartet. Was gibt es zu tun?</div>';

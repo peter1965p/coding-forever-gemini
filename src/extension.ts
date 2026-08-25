@@ -2,8 +2,9 @@ import * as vscode from 'vscode';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getChatHtml } from './pages/chat';
 import { getDashHtml } from './pages/dash';
-import { getSettingsHtml } from './pages/settings'; // Passe den Pfad an, falls nötig
+import { getSettingsHtml } from './pages/settings';
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Extension "coding-forever" ist aktiv mit Agentic-Power.');
@@ -39,7 +40,6 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.registerWebviewViewProvider('codingForeverView', {
             resolveWebviewView(view) {
                 const pkg = context.extension.packageJSON;
-                view.webview.html = getChatHtml(context, pkg.name, pkg.version);
                 view.webview.options = { enableScripts: true };
                 view.webview.html = getChatHtml(context, pkg.name, pkg.version);
 
@@ -53,6 +53,8 @@ export async function activate(context: vscode.ExtensionContext) {
                             await runTerminalCommand(msg.command);
                         } else if (msg.type === 'openChat') {
                             CodingForeverPanel.createOrShow(context);
+                        } else if (msg.type === 'openDashboard') {
+                            DashboardPanel.createOrShow(context);
                         } else if (msg.type === 'openSettings') {
                             SettingsPanel.createOrShow(context);
                         }
@@ -71,15 +73,10 @@ async function handleDataMigration(context: vscode.ExtensionContext) {
     const storedVersion = context.globalState.get<string>('codingForeverVersion');
 
     if (!storedVersion) {
-        // Frische Installation – prüfen ob es ältere Configs/GlobalStates gab
         console.log('Coding Forever: Keine vorherige Version gefunden. Frische Einrichtung.');
         await context.globalState.update('codingForeverVersion', currentVersion);
     } else if (storedVersion !== currentVersion) {
-        // Update-Fall: Alte Version war da. Deine Einstellungen in vscode.workspace.getConfiguration 
-        // und context.globalState / secrets bleiben ohnehin erhalten. 
         console.log(`Coding Forever: Upgrade von v${storedVersion} auf v${currentVersion}. Alte Daten wurden übernommen.`);
-        
-        // Hier könntest du bei Bedarf Daten aus der alten Version transformieren
         await context.globalState.update('codingForeverVersion', currentVersion);
     }
 }
@@ -109,7 +106,6 @@ function checkForGitHubUpdates(context: vscode.ExtensionContext, manual: boolean
                 const release = JSON.parse(data);
                 const latestVersion = release.tag_name.replace('v', '');
 
-                // Versionsvergleich
                 if (isNewerVersion(currentVersion, latestVersion)) {
                     const action = await vscode.window.showInformationMessage(
                         `🚀 Ein neues Update für Coding Forever ist verfügbar (v${latestVersion}).`,
@@ -136,12 +132,8 @@ function isNewerVersion(current: string, latest: string): boolean {
     for (let i = 0; i < Math.max(currParts.length, latestParts.length); i++) {
         const c = currParts[i] || 0;
         const l = latestParts[i] || 0;
-        if (l > c) {
-            return true;
-        }
-        if (l < c) {
-            return false;
-        }
+        if (l > c) { return true;  }
+        if (l < c) { return false; }
     }
     return false;
 }
@@ -276,161 +268,6 @@ async function applyCodeToActiveEditor(code: string) {
     }
 }
 
-function getChatHtml(context: vscode.ExtensionContext): string {
-    return `<!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            body { font-family: var(--vscode-font-family); background: #0b0f19; color: #f9fafb; margin: 0; padding: 10px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
-            #chatHistory { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
-            .message { padding: 8px; border-radius: 4px; background: #111827; border: 1px solid #1f2937; word-break: break-word; white-space: pre-wrap; font-size: 12px; }
-            .user-message { border-color: #3b82f6; }
-            .ai-message { border-color: #1f2937; }
-            .controls-container { display: flex; flex-direction: column; gap: 6px; }
-            .toggles { display: flex; gap: 12px; font-size: 11px; color: #9ca3af; align-items: center; }
-            .toggles label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-            select { background: #1f2937; border: 1px solid #374151; color: #fff; padding: 6px; border-radius: 4px; font-size: 11px; width: 100%; box-sizing: border-box; }
-            .input-row { display: flex; gap: 6px; align-items: stretch; }
-            .textarea-wrapper { position: relative; flex: 1; display: flex; }
-            textarea { width: 100%; height: 55px; resize: none; box-sizing: border-box; background: #1f2937; border: 1px solid #374151; color: #fff; padding: 6px; border-radius: 4px; font-size: 11px; padding-right: 45px; }
-            textarea:focus { outline: none; border-color: #06b6d4; }
-            #imagePreview {
-                display: none;
-                max-height: 40px;
-                max-width: 40px;
-                border: 1px solid #374151;
-                border-radius: 4px;
-                position: absolute;
-                right: 6px;
-                top: 6px;
-                object-fit: contain;
-                cursor: pointer;
-                background: #111827;
-            }
-            #imagePreview:hover { border-color: #ef4444; opacity: 0.8; }
-            button { background: #06b6d4; color: #0b0f19; border: none; padding: 0 14px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 12px; }
-            button:hover { opacity: 0.9; }
-        </style>
-    </head>
-    <body>
-        <div id="chatHistory">
-            <div class="message ai-message">Moin Peter! Coding Forever (Agentic-Mode) bereit. 🚀</div>
-        </div>
-        
-        <div class="controls-container">
-            <div class="toggles">
-                <label><input type="checkbox" id="bypassToggle"> Bypass [on]</label>
-                <label><input type="checkbox" id="autoAcceptToggle"> Auto Accept</label>
-            </div>
-            
-            <select id="cModel">
-                <option value="gemini-3.7-flash">gemini-3.7-flash</option>
-                <option value="gemini-3.6-flash">gemini-3.6-flash</option>
-                <option value="gemini-3.5-flash-lite" selected>gemini-3.5-flash-lite</option>
-            </select>
-            
-            <div class="input-row">
-                <div class="textarea-wrapper">
-                    <textarea id="cInput" placeholder="Was soll gebaut werden? (Ctrl+V für Bild)..."></textarea>
-                    <img id="imagePreview" alt="Vorschau" title="Klicken zum Entfernen">
-                </div>
-                <button id="sendBtn">Senden</button>
-            </div>
-        </div>
-
-        <script>
-            const vscode = acquireVsCodeApi();
-            const sendBtn = document.getElementById('sendBtn');
-            const cInput = document.getElementById('cInput');
-            const cModel = document.getElementById('cModel');
-            const bypassToggle = document.getElementById('bypassToggle');
-            const autoAcceptToggle = document.getElementById('autoAcceptToggle');
-            const history = document.getElementById('chatHistory');
-            const imagePreview = document.getElementById('imagePreview');
-            
-            let currentImageData = null;
-
-            cInput.addEventListener('paste', (e) => {
-                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-                for (let index in items) {
-                    const item = items[index];
-                    if (item.kind === 'file') {
-                        const blob = item.getAsFile();
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                            currentImageData = event.target.result;
-                            imagePreview.src = currentImageData;
-                            imagePreview.style.display = 'block';
-                        };
-                        reader.readAsDataURL(blob);
-                    }
-                }
-            });
-
-            imagePreview.addEventListener('click', () => {
-                currentImageData = null;
-                imagePreview.style.display = 'none';
-                imagePreview.src = '';
-            });
-
-            function send() {
-                const text = cInput.value.trim();
-                const model = cModel.value;
-                const bypass = bypassToggle.checked;
-                const autoAccept = autoAcceptToggle.checked;
-                
-                if (!text && !currentImageData) return;
-
-                const userDiv = document.createElement('div');
-                userDiv.className = 'message user-message';
-                let displayText = 'Du: ' + text;
-                if (currentImageData) {
-                    displayText += '<br><img src="' + currentImageData + '" style="max-width: 100px; margin-top: 5px; border-radius: 4px;">';
-                }
-                userDiv.innerHTML = displayText;
-                history.appendChild(userDiv);
-                
-                cInput.value = '';
-                imagePreview.style.display = 'none';
-                imagePreview.src = '';
-                history.scrollTop = history.scrollHeight;
-
-                vscode.postMessage({ 
-                    type: 'runChat', 
-                    prompt: text, 
-                    model: model, 
-                    bypass: bypass, 
-                    autoAccept: autoAccept,
-                    imageData: currentImageData 
-                });
-                
-                currentImageData = null;
-            }
-
-            sendBtn.addEventListener('click', send);
-            cInput.addEventListener('keydown', e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                }
-            });
-
-            window.addEventListener('message', e => {
-                const data = e.data;
-                if (data && data.type === 'response') {
-                    const aiDiv = document.createElement('div');
-                    aiDiv.className = 'message ai-message';
-                    aiDiv.innerText = 'AI: ' + data.text;
-                    history.appendChild(aiDiv);
-                    history.scrollTop = history.scrollHeight;
-                }
-            });
-        </script>
-    </body>
-    </html>`;
-}
-
 // Panel-Klasse für den Chat
 class CodingForeverPanel {
     public static currentPanel: CodingForeverPanel | undefined;
@@ -440,7 +277,8 @@ class CodingForeverPanel {
     private constructor(panel: vscode.WebviewPanel, private readonly context: vscode.ExtensionContext) {
         this._panel = panel;
         this._panel.webview.options = { enableScripts: true };
-        this._panel.webview.html = getChatHtml(context);
+        const pkg = context.extension.packageJSON;
+        this._panel.webview.html = getChatHtml(context, pkg.name, pkg.version);
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
 
