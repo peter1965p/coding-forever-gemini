@@ -2,13 +2,17 @@
   "name": "coding-forever",
   "displayName": "Coding Forever",
   "description": "Direct Gemini Flash Integration without Limits",
-  "version": "1.9.1",
+  "version": "2.0.1",
   "publisher": "PeterPaeffgen",
   "author": {
     "name": "Peter Päffgen",
     "email": "news24regional@gmail.com"
   },
-  "icon": "media/logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/peter1965p/coding-forever-gemini"
+  },
+  "icon": "media/logo.jpg",
   "engines": {
     "vscode": "^1.134.0"
   },
@@ -38,6 +42,11 @@
     },
     "commands": [
       {
+        "command": "coding-forever.openChatTab",
+        "title": "Coding Forever: Chat Tab öffnen",
+        "icon": "$(comment-discussion)"
+      },
+      {
         "command": "coding-forever.openDashboard",
         "title": "Coding Forever: Dashboard öffnen",
         "icon": "$(home)"
@@ -65,11 +74,11 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "compile": "npm run check-types && npm run lint && node esbuild.js && cp node_modules/sql.js/dist/sql-wasm.wasm dist/",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production && cp node_modules/sql.js/dist/sql-wasm.wasm dist/",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
@@ -80,6 +89,9 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@types/sql.js": "^1.4.11",
     "@types/vscode": "^1.134.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
@@ -94,6 +106,9 @@
     "serialize-javascript": "^7.0.6"
   },
   "dependencies": {
-    "@google/genai": "^2.18.0"
+    "@google/genai": "^2.18.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "sql.js": "^1.14.2"
   }
 }
