@@ -74,7 +74,15 @@ export const PromptManager: React.FC = () => {
 
   return (
     <div style={{ padding: '16px', color: 'var(--vscode-foreground)' }}>
-      <h2>📋 Prompt-Blöcke Manager</h2>
+      <h2 style={{
+      position: 'relative',
+      backgroundImage: 'linear-gradient(to bottom, #fed7aa, #f97316, #431407)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      filter: 'drop-shadow(0 0 70px rgba(234, 88, 12, 0.5))',
+      textTransform: 'uppercase',
+      transition: 'all 1s ease'
+    }}>Prompt Manager</h2>
       <p style={{ opacity: 0.8, fontSize: '0.9em' }}>
         Verwalte deine benutzerdefinierten Prompts. Nutze <code>{'{selection}'}</code> für markierten
         Code und <code>{'{file}'}</code> für den Dateipfad.
@@ -120,9 +128,9 @@ export const PromptManager: React.FC = () => {
         </div>
         <button
           type="submit"
-          style={{ padding: '8px', background: 'var(--vscode-button-background)', color: 'var(--vscode-button-foreground)', border: 'none', cursor: 'pointer' }}
+          style={{ padding: '8px', background: '#03950b', color: 'var(--vscode-button-foreground)', border: 'none', cursor: 'pointer' }}
         >
-          ➕ Neuen Prompt-Block speichern
+        Neuen Prompt erstellen
         </button>
       </form>
 
@@ -163,15 +171,15 @@ export const PromptManager: React.FC = () => {
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
               <button
                 onClick={() => handleRun(item)}
-                style={{ padding: '4px 8px', background: 'var(--vscode-button-background)', color: 'var(--vscode-button-foreground)', border: 'none', cursor: 'pointer' }}
+                style={{ padding: '4px 8px', background: '#03950b', color: '#fff', border: 'none', cursor: 'pointer' }}
               >
-                🚀 Im Chat ausführen
+                Im Chat ausführen
               </button>
               <button
                 onClick={() => handleDelete(item.id)}
-                style={{ padding: '4px 8px', background: 'var(--vscode-errorForeground)', color: '#fff', border: 'none', cursor: 'pointer' }}
+                style={{ padding: '4px 8px', background: '#9c0418', color: '#fff', border: 'none', cursor: 'pointer' }}
               >
-                🗑️ Löschen
+                Löschen
               </button>
             </div>
           </div>

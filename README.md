@@ -40,6 +40,12 @@
 * Die Verbindung zur Lokalen SQLite3 Datenbank ermöglicht auch neue eigene Prompts anzulegen.
 * Dann unter Einstellungen kann man nun auch Lokale KI Modelle einbinden wie Ollama usw.
 
+### 2.1.0
+* Promptvorschläge werden im Chat gemacht, je nach geöffneter Datei. 
+* Konstruktive Plan erstellung, pro Projekt, Volumen und Aufgabenstellung.
+* Bypass und Accept All abschaltbar.
+* Extension absolutes Redesign | Button | Switches | Dashboard etc
+* die Extension hatte die acquireVsCodeApi() aufgerufen, statt den Singleton aus vscodeApi.ts zu nutzen und genau das löste einen Instanz-Crash aus. Dieser wurde jetzt mit dem Fix behoben.
 
 ## Preview
 

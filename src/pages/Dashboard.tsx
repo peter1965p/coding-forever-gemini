@@ -40,7 +40,7 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div style={{
-      backgroundColor: '#0b0f19',
+      // backgroundColor: '#0b0f19',
       color: '#f9fafb',
       margin: 0,
       padding: '24px',
@@ -52,7 +52,7 @@ export const Dashboard: React.FC = () => {
       <style>{`
         .dash-select:focus, .dash-textarea:focus {
           outline: none;
-          border-color: #06b6d4 !important;
+          border-color: #ff6200 !important;
         }
         .dash-btn:hover {
           opacity: 0.9;
@@ -76,7 +76,20 @@ export const Dashboard: React.FC = () => {
           gap: '10px',
           color: '#f9fafb'
         }}>
-          <span style={{ color: '#f59e0b' }}>⚡</span> Coding Forever — Dashboard
+          <span 
+    style={{
+      position: 'relative',
+      backgroundImage: 'linear-gradient(to bottom, #fed7aa, #f97316, #431407)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      filter: 'drop-shadow(0 0 70px rgba(234, 88, 12, 0.5))',
+      textTransform: 'uppercase',
+      transition: 'all 1s ease'
+    }}
+  >
+    Coding Forever
+  </span>
+    
         </div>
         <div style={{
           background: '#111827',
@@ -183,7 +196,7 @@ export const Dashboard: React.FC = () => {
             className="dash-btn"
             onClick={handleSend}
             style={{
-              background: '#06b6d4',
+              background: '#ff6200',
               color: '#0b0f19',
               border: 'none',
               padding: '10px 16px',

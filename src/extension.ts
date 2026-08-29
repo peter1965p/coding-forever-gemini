@@ -71,6 +71,8 @@ async function handleWebviewMessage(
     try {
         if (msg.type === 'runChat') {
             await handleAgent(target, context, msg.prompt, msg.model, msg.bypass, msg.autoAccept);
+        } else if (msg.type === 'suggestNext') {
+            await handleSuggestNext(target, context);
         } else if (msg.type === 'applyCodeToEditor') {
             await applyCodeToActiveEditor(msg.code);
         } else if (msg.type === 'executeCommand') {
@@ -269,6 +271,96 @@ async function listWorkspaceFiles(): Promise<string> {
     return files.map(f => vscode.workspace.asRelativePath(f)).join('\n');
 }
 
+// --- AGENTIC TOOL-CALLING (ersetzt das alte Regex-Parsing) ---
+
+const AGENT_TOOLS = [{
+    functionDeclarations: [
+        {
+            name: 'list_files',
+            description: 'Listet alle Dateien im aktuellen Workspace auf (ohne node_modules).',
+            parameters: { type: 'OBJECT', properties: {} }
+        },
+        {
+            name: 'read_file',
+            description: 'Liest den Inhalt einer Datei relativ zum Workspace-Root.',
+            parameters: {
+                type: 'OBJECT',
+                properties: { path: { type: 'STRING', description: 'Relativer Pfad zur Datei' } },
+                required: ['path']
+            }
+        },
+        {
+            name: 'write_file',
+            description: 'Erstellt oder überschreibt eine Datei relativ zum Workspace-Root.',
+            parameters: {
+                type: 'OBJECT',
+                properties: {
+                    path: { type: 'STRING', description: 'Relativer Pfad zur Datei' },
+                    content: { type: 'STRING', description: 'Kompletter neuer Dateiinhalt' }
+                },
+                required: ['path', 'content']
+            }
+        },
+        {
+            name: 'run_command',
+            description: 'Führt einen Terminal-Befehl im Workspace-Root aus (z.B. npm install). Nur nutzen wenn wirklich nötig.',
+            parameters: {
+                type: 'OBJECT',
+                properties: { command: { type: 'STRING' } },
+                required: ['command']
+            }
+        }
+    ]
+}];
+
+function toolStatusLabel(name: string, args: any): string {
+    switch (name) {
+        case 'list_files': return '📂 Scanne Projektstruktur...';
+        case 'read_file': return `📖 Lese ${args.path}...`;
+        case 'write_file': return `✍️ Schreibe ${args.path}...`;
+        case 'run_command': return `⚡ Führe aus: ${args.command}`;
+        default: return `🔧 ${name}...`;
+    }
+}
+
+async function executeTool(name: string, args: any, autoAccept: boolean): Promise<any> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    const rootPath = workspaceFolders?.[0]?.uri.fsPath;
+
+    switch (name) {
+        case 'list_files':
+            return { files: await listWorkspaceFiles() };
+
+        case 'read_file': {
+            if (!rootPath) { return { error: 'Kein Workspace geöffnet.' }; }
+            const filePath = path.join(rootPath, args.path);
+            if (!fs.existsSync(filePath)) { return { error: `Datei nicht gefunden: ${args.path}` }; }
+            return { content: fs.readFileSync(filePath, 'utf8') };
+        }
+
+        case 'write_file': {
+            if (!rootPath) { return { error: 'Kein Workspace geöffnet.' }; }
+            if (!autoAccept && !(await confirmAction(`Soll die Datei "${args.path}" geschrieben werden?`))) {
+                return { error: 'Vom Nutzer abgelehnt.' };
+            }
+            const filePath = path.join(rootPath, args.path);
+            const dir = path.dirname(filePath);
+            if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); }
+            fs.writeFileSync(filePath, args.content, 'utf8');
+            return { success: true };
+        }
+
+        case 'run_command': {
+            if (!autoAccept) { return { error: 'AutoAccept ist deaktiviert, Befehl wurde nicht ausgeführt.' }; }
+            await runTerminalCommand(args.command);
+            return { success: true, note: 'Befehl wurde im Terminal gestartet.' };
+        }
+
+        default:
+            return { error: `Unbekanntes Tool: ${name}` };
+    }
+}
+
 async function handleAgent(
     target: { webview: vscode.Webview },
     context: vscode.ExtensionContext,
@@ -283,89 +375,106 @@ async function handleAgent(
         return;
     }
 
-    target.webview.postMessage({ type: 'response', text: '🤖 Agent analysiert Workspace & bereitet Aktionen vor...' });
-
-    const fileList = await listWorkspaceFiles();
     const editor = vscode.window.activeTextEditor;
-    const activeCode = editor ? editor.document.getText() : '';
-    const activeFileName = editor ? editor.document.fileName : 'Keine Datei offen';
+    const activeFileName = editor ? vscode.workspace.asRelativePath(editor.document.uri) : 'keine';
 
-    const payloadText = `Du bist ein autonomer Fullstack-Entwickler-Agent.
-Projekt-Dateien:
-${fileList}
+    const systemInstruction = `Du bist "Coding Forever", ein autonomer Fullstack-Entwickler-Agent direkt in VS Code.
+Arbeite iterativ und diszipliniert:
+1. Verschaff dir zuerst Überblick (list_files, ggf. read_file für relevante Dateien) bevor du etwas änderst.
+2. Ändere NUR was für die Aufgabe nötig ist. Erfinde keine Dateien/APIs, die du nicht gesehen hast.
+3. Nutze ausschließlich die bereitgestellten Tools für Datei-/Terminal-Aktionen, keine Code-Blöcke im Fließtext.
+4. Fasse am Ende kurz zusammen, was du getan hast.
 
-Aktive Datei: ${activeFileName}
-Code:
-\`\`\`
-${activeCode}
-\`\`\`
+Aktive Datei im Editor: ${activeFileName}
+Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`;
 
-Modus: Bypass=${bypass}, AutoAccept=${autoAccept}
+    let contents: any[] = [{ role: 'user', parts: [{ text: prompt }] }];
+    target.webview.postMessage({ type: 'status', text: '🤖 Plane Vorgehen...' });
 
-Aufgabe: ${prompt}
-
-Antworte im Klartext, aber wenn du Code-Dateien erstellen/ändern willst oder NPM-Befehle ausführen musst, nutze strukturierte Blöcke:
-Für Dateien:
-FILE: pfad/zur/datei.ts
-\`\`\`typescript
-// code hier
-\`\`\`
-
-Für Terminal-Befehle (nur wenn AutoAccept aktiv ist):
-CMD: npm install ...`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const maxTurns = 10;
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: payloadText }] }]
-            })
-        });
+        for (let turn = 0; turn < maxTurns; turn++) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    system_instruction: { parts: [{ text: systemInstruction }] },
+                    contents,
+                    tools: AGENT_TOOLS
+                })
+            });
 
-        const data: any = await res.json();
-        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Keine Antwort erhalten.';
+            const data: any = await res.json();
+            const candidate = data.candidates?.[0];
+            const parts: any[] = candidate?.content?.parts ?? [];
 
-        if (bypass || autoAccept) {
-            await processAutonomousActions(answer, autoAccept);
+            const functionCalls = parts.filter(p => p.functionCall);
+            const textParts = parts.filter(p => p.text).map(p => p.text).join('\n').trim();
+
+            if (functionCalls.length === 0) {
+                target.webview.postMessage({ type: 'response', text: textParts || 'Keine Antwort erhalten.' });
+                return;
+            }
+
+            contents.push({ role: 'model', parts });
+
+            const functionResponses: any[] = [];
+            for (const fc of functionCalls) {
+                const { name, args } = fc.functionCall;
+                target.webview.postMessage({ type: 'status', text: toolStatusLabel(name, args) });
+                const result = await executeTool(name, args, autoAccept);
+                functionResponses.push({ functionResponse: { name, response: { result } } });
+            }
+            contents.push({ role: 'user', parts: functionResponses });
         }
 
-        target.webview.postMessage({ type: 'response', text: answer });
+        target.webview.postMessage({ type: 'response', text: '⚠️ Maximale Anzahl an Schritten (10) erreicht, ohne abzuschließen.' });
     } catch (e: any) {
         target.webview.postMessage({ type: 'response', text: `Netzwerkfehler: ${e.message}` });
     }
 }
 
-async function processAutonomousActions(aiResponse: string, autoAccept: boolean) {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders) { return; }
-    const rootPath = workspaceFolders[0].uri.fsPath;
+// Kontextbezogene Vorschläge (Chips im Chat) auf Basis der aktiven Datei
+async function handleSuggestNext(
+    target: { webview: vscode.Webview },
+    context: vscode.ExtensionContext
+) {
+    const apiKey = context.globalState.get<string>('geminiApiKey');
+    if (!apiKey) { return; }
 
-    const fileRegex = /FILE:\s*([^\n]+)\s*```[a-zA-Z]*\n([\s\S]*?)```/g;
-    let match;
-    while ((match = fileRegex.exec(aiResponse)) !== null) {
-        const relativeFilePath = match[1].trim();
-        const fileContent = match[2];
-        const absolutePath = path.join(rootPath, relativeFilePath);
-
-        if (autoAccept || await confirmAction(`Soll die Datei ${relativeFilePath} überschrieben/erstellt werden?`)) {
-            const dir = path.dirname(absolutePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(absolutePath, fileContent, 'utf8');
-            vscode.window.showInformationMessage(`Agent hat Datei geschrieben: ${relativeFilePath}`);
-        }
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        target.webview.postMessage({ type: 'suggestions', data: [] });
+        return;
     }
 
-    if (autoAccept) {
-        const cmdRegex = /CMD:\s*([^\n]+)/g;
-        let cmdMatch;
-        while ((cmdMatch = cmdRegex.exec(aiResponse)) !== null) {
-            const command = cmdMatch[1].trim();
-            await runTerminalCommand(command);
-        }
+    const fileName = vscode.workspace.asRelativePath(editor.document.uri);
+    const code = editor.document.getText().slice(0, 4000); // kurz halten, kostet sonst unnötig Tokens
+
+    const payload = `Gib mir GENAU 3 kurze, konkrete Vorschläge (je max. 8 Wörter), was als nächstes sinnvoll wäre für diese Datei "${fileName}":
+
+\`\`\`
+${code}
+\`\`\`
+
+Antworte NUR als JSON-Array von Strings, ohne Erklärung. Beispiel: ["Tests hinzufügen", "Fehlerbehandlung verbessern", "Types präzisieren"]`;
+
+    try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: payload }] }] })
+        });
+        const data: any = await res.json();
+        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+        const cleaned = raw.replace(/```json|```/g, '').trim();
+        const suggestions = JSON.parse(cleaned);
+        target.webview.postMessage({ type: 'suggestions', data: Array.isArray(suggestions) ? suggestions : [] });
+    } catch {
+        target.webview.postMessage({ type: 'suggestions', data: [] });
     }
 }
 
