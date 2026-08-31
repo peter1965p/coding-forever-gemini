@@ -2,7 +2,7 @@
   "name": "coding-forever",
   "displayName": "Coding Forever",
   "description": "Direct Gemini Flash Integration without Limits",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "publisher": "PeterPaeffgen",
   "author": {
     "name": "Peter Päffgen",
@@ -17,8 +17,8 @@
     "vscode": "^1.134.0"
   },
   "categories": [
-    "AI",    
-    "Chat"    
+    "AI",
+    "Chat"
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
@@ -57,6 +57,16 @@
         "command": "coding-forever.openSettings",
         "title": "Coding Forever: Einstellungen",
         "icon": "$(gear)"
+      },
+      {
+        "command": "coding-forever.fixError",
+        "title": "Coding Forever: Fehler beheben",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "codingForever.openHistory",
+        "title": "Chat History",
+        "icon": "$(history)"
       }
     ],
     "menus": {
@@ -70,6 +80,11 @@
           "command": "coding-forever.openSettings",
           "when": "view == codingForeverView",
           "group": "navigation@2"
+        },
+        {
+          "command": "codingForever.openHistory",
+          "when": "view == codingForeverView",
+          "group": "navigation@3"
         }
       ]
     }
@@ -109,6 +124,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.18.0",
+    "lucide-react": "^1.38.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sql.js": "^1.14.2"

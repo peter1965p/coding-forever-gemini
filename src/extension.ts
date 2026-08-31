@@ -4,8 +4,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PromptDatabaseManager } from './lib/database';
 
+// Globaler In-Memory Store für den vorab generierten Code im Diff-Fenster
+const diffContentStore = new Map<string, string>();
+
+// Reference auf die aktive Sidebar View
+let activeSidebarView: vscode.WebviewView | undefined;
+
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Extension "coding-forever" ist aktiv mit Agentic-Power, React-Frontend und SQLite Support.');
+
+    // --- 0. DIFF CONTENT PROVIDER REGISTRIEREN ---
+    registerDiffProvider(context);
 
     // --- 1. DATEN-ÜBERNAHME & MIGRATION BEI INSTALLATION/UPDATE ---
     await handleDataMigration(context);
@@ -37,10 +46,30 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    // 4. Native Header-Action: Chat History umschalten
+    context.subscriptions.push(
+        vscode.commands.registerCommand('codingForever.openHistory', async () => {
+            // Sidebar anzeigen/fokussieren, falls sie nicht geöffnet ist
+            if (activeSidebarView) {
+                activeSidebarView.show?.(true);
+                activeSidebarView.webview.postMessage({ type: 'toggleHistory' });
+            } else {
+                await vscode.commands.executeCommand('codingForeverView.focus');
+            }
+
+            // Nachrichten an eventuell offene Panels schicken
+            CodingForeverPanel.currentPanels.forEach(panel => {
+                panel.postMessage({ type: 'toggleHistory' });
+            });
+        })
+    );
+
     // Webview View Provider (Sidebar)
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('codingForeverView', {
             async resolveWebviewView(view) {
+                activeSidebarView = view;
+
                 view.webview.options = {
                     enableScripts: true,
                     localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, 'dist'))]
@@ -51,17 +80,106 @@ export async function activate(context: vscode.ExtensionContext) {
                 view.webview.onDidReceiveMessage(async msg => {
                     await handleWebviewMessage(view, context, dbManager, msg);
                 });
+
+                view.onDidDispose(() => {
+                    activeSidebarView = undefined;
+                });
             }
         })
     );
+
+    // Command registrieren, der aufgerufen wird wenn man den Quick Fix anklickt
+    const fixErrorCommand = vscode.commands.registerCommand(
+        'coding-forever.fixError',
+        async (document: vscode.TextDocument, range: vscode.Range, diagnostic: vscode.Diagnostic) => {
+            // Sidebar/Webview in den Vordergrund holen
+            await vscode.commands.executeCommand('codingForeverView.focus');
+
+            // Fehler-Kontext vorbereiten
+            const codeSnippet = document.getText(range);
+            const prompt = `Behebe folgenden Fehler in der Datei ${path.basename(document.fileName)}:\n\n` +
+                `Fehler: ${diagnostic.message}\n` +
+                `Zeile: ${range.start.line + 1}\n\n` +
+                `Betroffener Code:\n\`\`\`${document.languageId}\n${codeSnippet}\n\`\`\``;
+
+            // Prompt direkt an die aktive Sidebar übergeben
+            if (activeSidebarView) {
+                activeSidebarView.webview.postMessage({
+                    type: 'setPrompt',
+                    value: prompt
+                });
+            }
+        }
+    );
+
+    // Quick Fix Provider für alle Sprachen registrieren
+    const codeActionProvider = vscode.languages.registerCodeActionsProvider(
+        { scheme: 'file' },
+        {
+            provideCodeActions(document, range, context) {
+                if (context.diagnostics.length === 0) {
+                    return [];
+                }
+
+                const actions: vscode.CodeAction[] = [];
+
+                for (const diagnostic of context.diagnostics) {
+                    const action = new vscode.CodeAction(
+                        `✨ Mit Coding Forever beheben: ${diagnostic.message.substring(0, 40)}...`,
+                        vscode.CodeActionKind.QuickFix
+                    );
+
+                    action.command = {
+                        command: 'coding-forever.fixError',
+                        title: 'Mit Coding Forever beheben',
+                        arguments: [document, diagnostic.range, diagnostic]
+                    };
+
+                    action.isPreferred = true;
+                    actions.push(action);
+                }
+
+                return actions;
+            }
+        },
+        {
+            providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
+        }
+    );
+
+    context.subscriptions.push(fixErrorCommand, codeActionProvider);
 }
 
-// Aktuellen Workspace-Namen ermitteln (für projektbezogene Prompts)
+// --- VISUELLE DIFF-STEUERUNG (VIRTUAL DOCUMENT PROVIDER) ---
+
+function registerDiffProvider(context: vscode.ExtensionContext) {
+    const provider = new class implements vscode.TextDocumentContentProvider {
+        onDidChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
+        onDidChange = this.onDidChangeEmitter.event;
+
+        provideTextDocumentContent(uri: vscode.Uri): string {
+            return diffContentStore.get(uri.toString()) || '';
+        }
+    };
+
+    context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider('gemini-diff', provider)
+    );
+}
+
+async function showCodeDiff(originalUri: vscode.Uri, modifiedContent: string) {
+    const fileName = originalUri.fsPath.split('/').pop() || 'file';
+    const virtualUri = vscode.Uri.parse(`gemini-diff://proposed/${fileName}`);
+    diffContentStore.set(virtualUri.toString(), modifiedContent);
+
+    const title = `${fileName} (Original ↔ Gemini Vorschlag)`;
+    await vscode.commands.executeCommand('vscode.diff', originalUri, virtualUri, title);
+}
+
 function getCurrentWorkspaceName(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.name;
 }
 
-// Zentraler Message Handler für Panels & Webview Views
 async function handleWebviewMessage(
     target: { webview: vscode.Webview },
     context: vscode.ExtensionContext,
@@ -70,11 +188,18 @@ async function handleWebviewMessage(
 ) {
     try {
         if (msg.type === 'runChat') {
-            await handleAgent(target, context, msg.prompt, msg.model, msg.bypass, msg.autoAccept);
+            await handleAgent(target, context, msg.prompt, msg.model || 'gemini-3.6-flash', msg.bypass, msg.autoAccept);
         } else if (msg.type === 'suggestNext') {
             await handleSuggestNext(target, context);
         } else if (msg.type === 'applyCodeToEditor') {
             await applyCodeToActiveEditor(msg.code);
+        } else if (msg.type === 'showDiff') {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                await showCodeDiff(editor.document.uri, msg.code);
+            } else {
+                vscode.window.showErrorMessage('Kein aktiver Editor geöffnet, um ein Diff anzuzeigen.');
+            }
         } else if (msg.type === 'executeCommand') {
             await runTerminalCommand(msg.command);
         } else if (msg.type === 'openChat') {
@@ -94,7 +219,6 @@ async function handleWebviewMessage(
             }
             vscode.window.showInformationMessage('Einstellungen erfolgreich gespeichert!');
         }
-        // --- PROMPT DATABASE HANDLER ---
         else if (msg.type === 'getPrompts' || msg.command === 'getPrompts') {
             const workspaceName = getCurrentWorkspaceName();
             const prompts = await dbManager.getPrompts(workspaceName);
@@ -123,7 +247,6 @@ async function handleWebviewMessage(
     }
 }
 
-// React HTML Loader
 function getReactWebviewContent(
     webview: vscode.Webview,
     context: vscode.ExtensionContext,
@@ -163,7 +286,6 @@ function getReactWebviewContent(
     </html>`;
 }
 
-// Helper zum Verarbeiten dynamischer Prompt-Vorlagen ({selection}, {file})
 async function handleExecutePrompt(
     target: { webview: vscode.Webview },
     context: vscode.ExtensionContext,
@@ -182,11 +304,10 @@ async function handleExecutePrompt(
         .replace(/\{selection\}/g, activeCode)
         .replace(/\{file\}/g, fileName);
 
-    const defaultModel = 'gemini-1.5-flash';
+    const defaultModel = 'gemini-3.6-flash';
     await handleAgent(target, context, processedPrompt, defaultModel, false, false);
 }
 
-// Funktion 1: Prüft auf alte Versionen/Daten und übernimmt sie
 async function handleDataMigration(context: vscode.ExtensionContext) {
     const currentVersion = context.extension.packageJSON.version;
     const storedVersion = context.globalState.get<string>('codingForeverVersion');
@@ -200,7 +321,6 @@ async function handleDataMigration(context: vscode.ExtensionContext) {
     }
 }
 
-// Funktion 2: Zieht Updates direkt von deinem GitHub-Repo
 function checkForGitHubUpdates(context: vscode.ExtensionContext, manual: boolean = false) {
     const currentVersion = context.extension.packageJSON.version;
 
@@ -271,8 +391,6 @@ async function listWorkspaceFiles(): Promise<string> {
     return files.map(f => vscode.workspace.asRelativePath(f)).join('\n');
 }
 
-// --- AGENTIC TOOL-CALLING (ersetzt das alte Regex-Parsing) ---
-
 const AGENT_TOOLS = [{
     functionDeclarations: [
         {
@@ -340,10 +458,17 @@ async function executeTool(name: string, args: any, autoAccept: boolean): Promis
 
         case 'write_file': {
             if (!rootPath) { return { error: 'Kein Workspace geöffnet.' }; }
-            if (!autoAccept && !(await confirmAction(`Soll die Datei "${args.path}" geschrieben werden?`))) {
-                return { error: 'Vom Nutzer abgelehnt.' };
-            }
             const filePath = path.join(rootPath, args.path);
+            const fileUri = vscode.Uri.file(filePath);
+
+            if (fs.existsSync(filePath)) {
+                await showCodeDiff(fileUri, args.content);
+            }
+
+            if (!autoAccept && !(await confirmAction(`Soll die Datei "${args.path}" nach deiner visuellen Prüfung geschrieben werden?`))) {
+                return { error: 'Vom Nutzer im Diff-Schritt abgelehnt.' };
+            }
+
             const dir = path.dirname(filePath);
             if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); }
             fs.writeFileSync(filePath, args.content, 'utf8');
@@ -391,7 +516,8 @@ Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`;
     let contents: any[] = [{ role: 'user', parts: [{ text: prompt }] }];
     target.webview.postMessage({ type: 'status', text: '🤖 Plane Vorgehen...' });
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const selectedModel = model || 'gemini-3.6-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
     const maxTurns = 10;
 
     try {
@@ -436,7 +562,6 @@ Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`;
     }
 }
 
-// Kontextbezogene Vorschläge (Chips im Chat) auf Basis der aktiven Datei
 async function handleSuggestNext(
     target: { webview: vscode.Webview },
     context: vscode.ExtensionContext
@@ -451,7 +576,7 @@ async function handleSuggestNext(
     }
 
     const fileName = vscode.workspace.asRelativePath(editor.document.uri);
-    const code = editor.document.getText().slice(0, 4000); // kurz halten, kostet sonst unnötig Tokens
+    const code = editor.document.getText().slice(0, 4000);
 
     const payload = `Gib mir GENAU 3 kurze, konkrete Vorschläge (je max. 8 Wörter), was als nächstes sinnvoll wäre für diese Datei "${fileName}":
 
@@ -516,7 +641,6 @@ async function applyCodeToActiveEditor(rawCode: string) {
     vscode.window.showInformationMessage('Code erfolgreich in den Editor übernommen!');
 }
 
-// Panel-Klasse für Webview-Tabs (Chat, Dashboard, Settings)
 class CodingForeverPanel {
     public static currentPanels: Map<string, CodingForeverPanel> = new Map();
     private readonly _panel: vscode.WebviewPanel;
@@ -541,6 +665,10 @@ class CodingForeverPanel {
         }, null, this._disposables);
 
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    }
+
+    public postMessage(message: any) {
+        this._panel.webview.postMessage(message);
     }
 
     public static async createOrShow(context: vscode.ExtensionContext, route: string = 'chat') {
