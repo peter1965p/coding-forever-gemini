@@ -38,16 +38,21 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
     { sender: 'assistant', text: `Moin${greetingName}! ${extName} ist bereit. Wie kann ich dir heute helfen? 🚀` }
   ]);
 
-  const [prompts] = useState<PromptBlock[]>([]);
+  const [prompts, setPrompts] = useState<PromptBlock[]>([]);
   const [suggestions] = useState<string[]>([]);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const postToVsCode = (payload: any) => {
+    vscode.postMessage(payload);
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Listener ZUERST registrieren, DANACH Prompts anfordern
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
@@ -55,16 +60,19 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
         setShowHistory((prev) => !prev);
       } else if (message.type === 'setPrompt') {
         setInputText(message.value);
+      } else if (message.type === 'loadPrompts' || message.type === 'setPrompts' || message.type === 'promptsLoaded') {
+        const receivedPrompts = message.prompts || message.value || message.data || [];
+        setPrompts(receivedPrompts);
       }
     };
 
     window.addEventListener('message', handleMessage);
+    
+    // Nach Registrierung des Listeners die Daten anfordern
+    postToVsCode({ type: 'getPrompts' });
+
     return () => window.removeEventListener('message', handleMessage);
   }, []);
-
-  const postToVsCode = (payload: any) => {
-    vscode.postMessage(payload);
-  };
 
   const sendPrompt = (text: string) => {
     if (!text.trim()) return;
@@ -86,16 +94,27 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInputText(val);
-    const slashMatch = val.match(/(?:^|\s)\/(\S*)$/);
-    setSlashQuery(slashMatch ? slashMatch[1] : null);
+
+    // Robuste Erkennung: Prüft ob der Text mit '/' beginnt oder ein '/' getippt wird
+    if (val.startsWith('/')) {
+      setSlashQuery(val.slice(1)); // Nimmt den Suchtext nach dem '/'
+    } else {
+      const slashMatch = val.match(/(?:^|\s)\/(\S*)$/);
+      setSlashQuery(slashMatch ? slashMatch[1] : null);
+    }
   };
 
   const filteredPrompts = slashQuery !== null
-    ? prompts.filter(p => p.label.toLowerCase().includes(slashQuery.toLowerCase()) || p.category.toLowerCase().includes(slashQuery.toLowerCase()))
+    ? prompts.filter(p => 
+        (p.label && p.label.toLowerCase().includes(slashQuery.toLowerCase())) || 
+        (p.category && p.category.toLowerCase().includes(slashQuery.toLowerCase())) ||
+        (p.description && p.description.toLowerCase().includes(slashQuery.toLowerCase()))
+      )
     : [];
 
   const pickSlashPrompt = (p: PromptBlock) => {
-    sendPrompt(p.prompt);
+    setInputText(p.prompt);
+    setSlashQuery(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -103,7 +122,9 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
       e.preventDefault();
       handleSendMessage();
     }
-    if (e.key === 'Escape') { setSlashQuery(null); }
+    if (e.key === 'Escape') { 
+      setSlashQuery(null); 
+    }
   };
 
   const handleNewChat = () => {
@@ -293,15 +314,24 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
 
       {/* INPUT AREA */}
       <div style={{ padding: '10px 14px', backgroundColor: '#111827', borderTop: '1px solid #1f2937', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', flexShrink: 0 }}>
-        {filteredPrompts.length > 0 && (
+        
+        {/* PROMPT DROPDOWN */}
+        {slashQuery !== null && filteredPrompts.length > 0 && (
           <div style={{
             position: 'absolute', bottom: '100%', left: '14px', right: '14px', marginBottom: '4px',
-            background: '#1e293b', border: '1px solid #374151', borderRadius: '6px', maxHeight: '200px', overflowY: 'auto', zIndex: 10
+            background: '#1e293b', border: '1px solid #ff6200', borderRadius: '6px', maxHeight: '200px', overflowY: 'auto', zIndex: 10,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
           }}>
             {filteredPrompts.map((p) => (
-              <div key={p.id} onClick={() => pickSlashPrompt(p)} style={{ padding: '8px 10px', fontSize: '11px', cursor: 'pointer', borderBottom: '1px solid #374151' }}>
-                <strong>{p.label}</strong>
-                <div style={{ color: '#9ca3af', fontSize: '10px' }}>{p.category}</div>
+              <div 
+                key={p.id || p.label} 
+                onClick={() => pickSlashPrompt(p)} 
+                style={{ padding: '8px 10px', fontSize: '11px', cursor: 'pointer', borderBottom: '1px solid #374151' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#334155')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <strong style={{ color: '#ff6200' }}>{p.label}</strong>
+                <div style={{ color: '#9ca3af', fontSize: '10px' }}>{p.category} — {p.description}</div>
               </div>
             ))}
           </div>

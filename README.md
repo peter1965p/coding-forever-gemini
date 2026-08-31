@@ -33,7 +33,7 @@
 
 ## Verwendung
 
-1. Installiere die Extension in VS Code.
+1. Installiere die Extension in VS Code, mit: ext install PeterPaeffgen.coding-forever
 2. Öffne das **Coding Forever** Icon in der Activity Bar.
 3. Trage über das Zahnrad deinen Google Gemini API Key ein ([Hier kostenlos erstellen](https://aistudio.google.com/api-keys)).
 4. Wähle dein gewünschtes Modell aus und starte das autonome Coding!
@@ -41,6 +41,9 @@
 ---
 
 ## Changelog
+
+### 2.2.1
+* **Fix**: '/' gespeicherte Prompts sind wieder verfügbar
 
 ### 2.2.0
 * **Agenten-Modus (Agentic Power):** Der Agent agiert autonom über Tool-Calls (`list_files`, `read_file`, `write_file`, `run_command`), nutzt ein Schritt-Limit von 10 Turns und führt Aktionen dynamisch aus.
