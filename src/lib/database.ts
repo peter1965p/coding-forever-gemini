@@ -179,13 +179,13 @@ export class PromptDatabaseManager {
    * ========================================================== */
 
   public async getPrompts(workspace?: string): Promise<PromptBlock[]> {
-    if (!this.db) return [];
+    if (!this.db) {return [];}
     const sql = workspace
       ? "SELECT id, label, category, description, prompt, scope, workspace, created_at as createdAt FROM prompt_blocks WHERE scope = 'global' OR workspace = ?"
       : "SELECT id, label, category, description, prompt, scope, workspace, created_at as createdAt FROM prompt_blocks WHERE scope = 'global'";
 
     const res = workspace ? this.db.exec(sql, [workspace]) : this.db.exec(sql);
-    if (!res[0]) return [];
+    if (!res[0]) {return [];}
 
     const columns = res[0].columns;
     return res[0].values.map((row) => {
@@ -198,7 +198,7 @@ export class PromptDatabaseManager {
   }
 
   public async addPrompt(block: Omit<PromptBlock, 'id' | 'createdAt'>): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {return;}
     const id = `prompt_${Date.now()}`;
     this.db.run(
       "INSERT INTO prompt_blocks (id, label, category, description, prompt, scope, workspace) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -208,7 +208,7 @@ export class PromptDatabaseManager {
   }
 
   public async deletePrompt(id: string): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {return;}
     this.db.run("DELETE FROM prompt_blocks WHERE id = ?", [id]);
     this.saveToDisk();
   }
@@ -218,10 +218,10 @@ export class PromptDatabaseManager {
    * ========================================================== */
 
   public async getSessions(workspace: string): Promise<ChatSession[]> {
-    if (!this.db) return [];
+    if (!this.db) {return [];}
     const sql = "SELECT id, title, workspace, is_open, created_at, updated_at FROM chat_sessions WHERE workspace = ? ORDER BY updated_at DESC";
     const res = this.db.exec(sql, [workspace]);
-    if (!res[0]) return [];
+    if (!res[0]) {return [];}
 
     const columns = res[0].columns;
     return res[0].values.map((row) => {
@@ -234,7 +234,7 @@ export class PromptDatabaseManager {
   }
 
   public async createSession(id: string, title: string, workspace: string): Promise<ChatSession> {
-    if (!this.db) throw new Error("Database not initialized");
+    if (!this.db) {throw new Error("Database not initialized");}
     const sql = "INSERT INTO chat_sessions (id, title, workspace, is_open) VALUES (?, ?, ?, 1)";
     this.db.run(sql, [id, title, workspace]);
     this.saveToDisk();
@@ -242,21 +242,21 @@ export class PromptDatabaseManager {
   }
 
   public async updateSessionTitle(id: string, title: string): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {return;}
     const sql = "UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
     this.db.run(sql, [title, id]);
     this.saveToDisk();
   }
 
   public async setSessionTabStatus(id: string, isOpen: boolean): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {return;}
     const sql = "UPDATE chat_sessions SET is_open = ? WHERE id = ?";
     this.db.run(sql, [isOpen ? 1 : 0, id]);
     this.saveToDisk();
   }
 
   public async deleteSession(id: string): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) {return;}
     this.db.run("DELETE FROM chat_messages WHERE session_id = ?", [id]);
     this.db.run("DELETE FROM chat_sessions WHERE id = ?", [id]);
     this.saveToDisk();
@@ -267,10 +267,10 @@ export class PromptDatabaseManager {
    * ========================================================== */
 
   public async getMessages(sessionId: string): Promise<ChatMessage[]> {
-    if (!this.db) return [];
+    if (!this.db) {return [];}
     const sql = "SELECT id, session_id, sender, text, created_at FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC";
     const res = this.db.exec(sql, [sessionId]);
-    if (!res[0]) return [];
+    if (!res[0]) {return [];}
 
     const columns = res[0].columns;
     return res[0].values.map((row) => {
@@ -283,7 +283,7 @@ export class PromptDatabaseManager {
   }
 
   public async addMessage(sessionId: string, sender: 'user' | 'assistant' | 'status', text: string): Promise<ChatMessage> {
-    if (!this.db) throw new Error("Database not initialized");
+    if (!this.db) {throw new Error("Database not initialized");}
     const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
     
     // Nachricht einfügen
