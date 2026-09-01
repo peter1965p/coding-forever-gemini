@@ -58,31 +58,7 @@ export const Settings: React.FC<SettingsProps> = ({
         Einstellungen
       </h2>
 
-      <div style={sectionStyle}>
-        <label style={labelStyle}>Gemini API Key</label>
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <input
-            type={showPassword ? 'text' : 'password'}
-            className="settings-input"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Deinen API Key hier einfügen..."
-            style={{ ...inputStyle, paddingRight: '36px' }}
-          />
-          <button
-            type="button"
-            className="toggle-eye"
-            onClick={() => setShowPassword(!showPassword)}
-            title="Key anzeigen/verbergen"
-            style={{
-              position: 'absolute', right: '8px', background: 'transparent', border: 'none',
-              color: 'var(--vscode-descriptionForeground)', cursor: 'pointer', fontSize: '14px', padding: '2px 4px'
-            }}
-          >
-            {showPassword ? '🙈' : '👁️'}
-          </button>
-        </div>
-      </div>
+      
 
       <div style={sectionStyle}>
         <label style={labelStyle}>UI Font-Familie</label>
@@ -95,6 +71,9 @@ export const Settings: React.FC<SettingsProps> = ({
           <option value="var(--vscode-font-family)">VS Code Standard</option>
           <option value="Arial">Arial</option>
           <option value="Consolas">Consolas (Monospace)</option>
+          <option value="Courier New">Courier New (Monospace)</option>
+          <option value="Fira Code">Fira Code (Monospace)</option>
+          <option value="Roboto">Roboto</option>
           <option value="JetBrains Mono">JetBrains Mono</option>
         </select>
       </div>

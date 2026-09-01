@@ -52,7 +52,6 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Listener ZUERST registrieren, DANACH Prompts anfordern
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
@@ -63,12 +62,14 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
       } else if (message.type === 'loadPrompts' || message.type === 'setPrompts' || message.type === 'promptsLoaded') {
         const receivedPrompts = message.prompts || message.value || message.data || [];
         setPrompts(receivedPrompts);
+      } else if (message.type === 'response' || message.type === 'chatResponse') {
+        setMessages((prev) => [...prev, { sender: 'assistant', text: message.text || message.value }]);
+      } else if (message.type === 'status') {
+        setMessages((prev) => [...prev, { sender: 'status', text: message.text }]);
       }
     };
 
     window.addEventListener('message', handleMessage);
-    
-    // Nach Registrierung des Listeners die Daten anfordern
     postToVsCode({ type: 'getPrompts' });
 
     return () => window.removeEventListener('message', handleMessage);
@@ -95,9 +96,8 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
     const val = e.target.value;
     setInputText(val);
 
-    // Robuste Erkennung: Prüft ob der Text mit '/' beginnt oder ein '/' getippt wird
     if (val.startsWith('/')) {
-      setSlashQuery(val.slice(1)); // Nimmt den Suchtext nach dem '/'
+      setSlashQuery(val.slice(1));
     } else {
       const slashMatch = val.match(/(?:^|\s)\/(\S*)$/);
       setSlashQuery(slashMatch ? slashMatch[1] : null);
@@ -118,7 +118,7 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -199,7 +199,6 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
         }
       `}</style>
 
-      {/* OVERLAY SIDEBAR DRAWER FÜR HISTORY */}
       {showHistory && (
         <div style={{
           position: 'absolute', top: 0, right: 0, width: '260px', height: '100%',
@@ -221,7 +220,6 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
         </div>
       )}
 
-      {/* TOP HEADER / TOOLBAR */}
       <div style={{ padding: '8px 12px', borderBottom: '1px solid #1f2937', fontSize: '12px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#111827', flexShrink: 0 }}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -259,7 +257,6 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
         </div>
       </div>
 
-      {/* CHAT MESSAGES AREA */}
       <div style={{ flex: 1, padding: '14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {messages.map((msg, idx) => {
           if (msg.sender === 'status') {
@@ -298,7 +295,6 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
         <div ref={messagesEndRef} />
       </div>
 
-      {/* SUGGESTIONS */}
       {suggestions.length > 0 && (
         <div style={{ display: 'flex', gap: '6px', padding: '0 14px 8px', flexWrap: 'wrap' }}>
           {suggestions.map((s, i) => (
@@ -312,10 +308,8 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
         </div>
       )}
 
-      {/* INPUT AREA */}
       <div style={{ padding: '10px 14px', backgroundColor: '#111827', borderTop: '1px solid #1f2937', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', flexShrink: 0 }}>
         
-        {/* PROMPT DROPDOWN */}
         {slashQuery !== null && filteredPrompts.length > 0 && (
           <div style={{
             position: 'absolute', bottom: '100%', left: '14px', right: '14px', marginBottom: '4px',
@@ -341,7 +335,7 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
           value={inputText}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder="Was soll gebaut werden? ('/' für gespeicherte Prompts, Ctrl+Enter zum Senden)"
+          placeholder="Was soll gebaut werden? ('/' für gespeicherte Prompts, Enter zum Senden, Shift+Enter für Zeilenumbruch)"
           style={{ width: '100%', background: '#0b0f19', border: '1px solid #1f2937', color: '#fff', padding: '8px', borderRadius: '6px', fontSize: '12px', resize: 'none', height: '48px', boxSizing: 'border-box', fontFamily: 'inherit' }}
         />
         

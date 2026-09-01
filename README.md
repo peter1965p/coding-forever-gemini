@@ -42,6 +42,9 @@
 
 ## Changelog
 
+### 2.2.2
+* **Fix**: Chat lebt wieder, war kurzzeitig nicht da wegen einem Bug. Das Problem mit den 2 API-Keys einmal in Settings und zum anderen in AI Engine. Dies habe ich nun behoben und mich dazu entschieden den API-KEY in die AI Engine zu platzieren. Dort gehört er auch von der Logik her hin.
+
 ### 2.2.1
 * **Fix**: '/' gespeicherte Prompts sind wieder verfügbar
 
