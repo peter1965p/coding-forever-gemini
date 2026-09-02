@@ -298,4 +298,69 @@ export class PromptDatabaseManager {
     this.saveToDisk();
     return { id, session_id: sessionId, sender, text };
   }
+
+  /* ==========================================================
+   * HELPER METHODS
+   * ========================================================== */
+
+  public async getOrCreateCurrentSession(workspace: string, title: string = 'New Chat'): Promise<ChatSession> {
+    if (!this.db) {throw new Error("Database not initialized");}
+    
+    // Versuche offene Session zu finden
+    const sql = "SELECT id, title, workspace, is_open, created_at, updated_at FROM chat_sessions WHERE workspace = ? AND is_open = 1 ORDER BY updated_at DESC LIMIT 1";
+    const res = this.db.exec(sql, [workspace]);
+    
+    if (res[0] && res[0].values.length > 0) {
+      const row = res[0].values[0];
+      return {
+        id: row[0] as string,
+        title: row[1] as string,
+        workspace: row[2] as string,
+        is_open: row[3] as number
+      };
+    }
+
+    // Erstelle neue Session
+    const sessionId = `session_${Date.now()}`;
+    return this.createSession(sessionId, title, workspace);
+  }
+
+  public async getRecentSessions(workspace: string, limit: number = 20): Promise<ChatSession[]> {
+    if (!this.db) {return [];}
+    const sql = "SELECT id, title, workspace, is_open, created_at, updated_at FROM chat_sessions WHERE workspace = ? ORDER BY updated_at DESC LIMIT ?";
+    const res = this.db.exec(sql, [workspace, limit]);
+    if (!res[0]) {return [];}
+
+    const columns = res[0].columns;
+    return res[0].values.map((row) => {
+      const obj: any = {};
+      columns.forEach((col, idx) => {
+        obj[col] = row[idx];
+      });
+      return obj as ChatSession;
+    });
+  }
+
+  public async getSessionWithMessages(sessionId: string): Promise<{ session: ChatSession | null; messages: ChatMessage[] }> {
+    if (!this.db) {return { session: null, messages: [] };}
+    
+    const sessionSql = "SELECT id, title, workspace, is_open, created_at, updated_at FROM chat_sessions WHERE id = ?";
+    const sessionRes = this.db.exec(sessionSql, [sessionId]);
+    
+    let session: ChatSession | null = null;
+    if (sessionRes[0] && sessionRes[0].values.length > 0) {
+      const row = sessionRes[0].values[0];
+      session = {
+        id: row[0] as string,
+        title: row[1] as string,
+        workspace: row[2] as string,
+        is_open: row[3] as number,
+        created_at: row[4] as string,
+        updated_at: row[5] as string
+      };
+    }
+
+    const messages = await this.getMessages(sessionId);
+    return { session, messages };
+  }
 }

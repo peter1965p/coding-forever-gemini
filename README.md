@@ -1,6 +1,6 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.2.0-orange.svg)
+![Version](https://img.shields.io/badge/version-2.3.0-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.80%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -22,6 +22,9 @@
 
 * **Autonomer Agenten-Modus:** KI führt Datei-Analysen, Erstellungen und Terminal-Befehle selbstständig im Projekt aus.
 * **Visuelle Diff-Überwachung:** Volle Kontrolle vor Code-Übernahmen durch native VS Code Diff-Ansichten (`gemini-diff://`).
+* **Chat-History & Persistent Storage:** Alle Chat-Nachrichten werden lokal in SQLite gespeichert. Lade frühere Chats mit einem Klick aus dem History-Drawer.
+* **Strukturierte Chat-Ausgaben:** Markdown-Support mit Headings, Code-Blöcken, Listen und besserer visueller Hierarchie – wie ein echter AI-Assistant.
+* **Chat-Session Management:** Automatische Session-Verwaltung mit Titeln, Timestamps und Lösch-Funktionen direkt in der History.
 * **Chat-History Drawer & Header-Badges:** Synchronisierte Verlaufssteuerung und visuelle Status-Badges (`Agent [ON]`, `Bypass [ON]`, `Accept [ON]`) direkt in der Live-Headerleiste.
 * **Direkte API-Anbindung:** Kein unnötiges Abo und keine künstlichen Limits – direkter Zugriff auf Gemini Flash und Pro Modelle.
 * **Flexibles Engine-Management:** Nutzen von Google Gemini oder Einbindung lokaler Modelle (z. B. Ollama) über SQLite-Datenbank-Anbindung.
@@ -41,6 +44,13 @@
 ---
 
 ## Changelog
+
+### 2.3.0
+* **Chat-History & Persistent Storage:** Alle Chat-Nachrichten werden automatisch in SQLite gespeichert und können über den History-Drawer geladen werden.
+* **Strukturierte Chat-Ausgaben:** Vollständige Markdown-Unterstützung mit Headings (`# ## ###`), Code-Blöcken mit Syntax-Highlighting, Bullet-Listen und besserer visueller Struktur.
+* **Verbesserte Session-Verwaltung:** Jeder Chat hat eine eindeutige Session-ID, Nachrichten werden mit Timestamps versehen und Sessions lassen sich mit einem Klick wiederherstellen.
+* **Dashboard-Version-Anzeige:** Die aktuelle Extension-Version wird jetzt im Dashboard angezeigt.
+* **Trash-Funktion:** Chat-Sessions können einzeln aus der History gelöscht werden mit Delete-Button.
 
 ### 2.2.2
 * **Fix**: Chat lebt wieder, war kurzzeitig nicht da wegen einem Bug. Das Problem mit den 2 API-Keys einmal in Settings und zum anderen in AI Engine. Dies habe ich nun behoben und mich dazu entschieden den API-KEY in die AI Engine zu platzieren. Dort gehört er auch von der Logik her hin.

@@ -180,6 +180,9 @@ function getCurrentWorkspaceName(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.name;
 }
 
+// Globale Session-ID Store
+let currentSessionId: string | null = null;
+
 async function handleWebviewMessage(
     target: { webview: vscode.Webview },
     context: vscode.ExtensionContext,
@@ -187,7 +190,43 @@ async function handleWebviewMessage(
     msg: any
 ) {
     try {
-        if (msg.type === 'runChat') {
+        // Session Management
+        if (msg.type === 'initializeSession') {
+            const workspaceName = getCurrentWorkspaceName() || 'global';
+            const session = await dbManager.getOrCreateCurrentSession(workspaceName, 'New Chat');
+            currentSessionId = session.id;
+            target.webview.postMessage({ type: 'sessionInitialized', sessionId: session.id });
+        } else if (msg.type === 'saveMessage') {
+            if (msg.sessionId) {
+                await dbManager.addMessage(msg.sessionId, msg.sender, msg.text);
+            }
+        } else if (msg.type === 'loadHistory') {
+            const workspaceName = getCurrentWorkspaceName() || 'global';
+            const sessions = await dbManager.getRecentSessions(workspaceName, 50);
+            target.webview.postMessage({ type: 'historyLoaded', sessions });
+        } else if (msg.type === 'loadSession') {
+            const { session, messages } = await dbManager.getSessionWithMessages(msg.sessionId);
+            currentSessionId = msg.sessionId;
+            target.webview.postMessage({ 
+                type: 'sessionLoaded', 
+                messages: messages.map(m => ({ 
+                    sender: m.sender, 
+                    text: m.text 
+                })) 
+            });
+        } else if (msg.type === 'deleteSession') {
+            await dbManager.deleteSession(msg.sessionId);
+            const workspaceName = getCurrentWorkspaceName() || 'global';
+            const sessions = await dbManager.getRecentSessions(workspaceName, 50);
+            target.webview.postMessage({ type: 'historyLoaded', sessions });
+        } else if (msg.type === 'newChat') {
+            const workspaceName = getCurrentWorkspaceName() || 'global';
+            const session = await dbManager.getOrCreateCurrentSession(workspaceName, 'New Chat');
+            currentSessionId = session.id;
+            target.webview.postMessage({ type: 'sessionInitialized', sessionId: session.id });
+        }
+        // End Session Management
+        else if (msg.type === 'runChat') {
             await handleAgent(target, context, msg.prompt, msg.model || 'gemini-3.6-flash', msg.bypass, msg.autoAccept);
         } else if (msg.type === 'suggestNext') {
             await handleSuggestNext(target, context);

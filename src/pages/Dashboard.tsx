@@ -10,8 +10,14 @@ export const Dashboard: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash-lite');
   const [promptText, setPromptText] = useState('');
   const [responseText, setResponseText] = useState('Bereit für Anfragen...');
+  const [extVersion, setExtVersion] = useState('2.3.0');
 
   useEffect(() => {
+    // Version aus window global vars auslesen
+    if (typeof window !== 'undefined' && (window as any).EXT_VERSION) {
+      setExtVersion((window as any).EXT_VERSION);
+    }
+
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
       if (message.type === 'response') {
@@ -98,9 +104,13 @@ export const Dashboard: React.FC = () => {
           borderRadius: '20px',
           fontSize: '12px',
           color: '#10b981',
-          marginLeft: 'auto'
+          marginLeft: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
         }}>
-          🟢 System Status: Online (Gemini Flash Unchained)
+          <span style={{ fontSize: '10px' }}>🟢 Online</span>
+          <span style={{ fontSize: '10px', color: '#9ca3af' }}>v{extVersion}</span>
         </div>
       </div>
 
