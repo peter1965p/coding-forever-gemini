@@ -31,6 +31,18 @@ export const AiSettings: React.FC = () => {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
+    const initialSettings = (window as any).INITIAL_AI_SETTINGS as AiConfig | undefined;
+    if (initialSettings) {
+      setGeminiApiKey(initialSettings.geminiApiKey || '');
+      setClaudeApiKey(initialSettings.claudeApiKey || '');
+      setOpenaiApiKey(initialSettings.openaiApiKey || '');
+      setLocalEnabled(initialSettings.localEnabled ?? false);
+      setBaseUrl(initialSettings.baseUrl || 'http://localhost:11434');
+      setModelName(initialSettings.modelName || 'llama3.2');
+      setMcpConfig(initialSettings.mcpConfig || '');
+      setUserName(initialSettings.userName || '');
+    }
+
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
       if (message.type === 'LOAD_AI_SETTINGS') {

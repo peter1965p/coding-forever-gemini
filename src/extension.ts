@@ -247,6 +247,17 @@ async function handleWebviewMessage(
             await CodingForeverPanel.createOrShow(context, 'dashboard');
         } else if (msg.type === 'openSettings') {
             await CodingForeverPanel.createOrShow(context, 'settings');
+        } else if (msg.type === 'SAVE_AI_SETTINGS') {
+            const config = msg.payload || {};
+            await context.globalState.update('geminiApiKey', config.geminiApiKey || '');
+            await context.globalState.update('claudeApiKey', config.claudeApiKey || '');
+            await context.globalState.update('openaiApiKey', config.openaiApiKey || '');
+            await context.globalState.update('localEnabled', config.localEnabled ?? false);
+            await context.globalState.update('baseUrl', config.baseUrl || 'http://localhost:11434');
+            await context.globalState.update('modelName', config.modelName || 'llama3.2');
+            await context.globalState.update('mcpConfig', config.mcpConfig || '');
+            await context.globalState.update('userName', config.userName || '');
+            vscode.window.showInformationMessage('AI-Einstellungen erfolgreich gespeichert!');
         } else if (msg.type === 'checkUpdates') {
             checkForGitHubUpdates(context, true);
         } else if (msg.type === 'saveSettings') {
@@ -300,6 +311,16 @@ function getReactWebviewContent(
     const chatFont = context.globalState.get<string>('chatFont') || 'var(--vscode-font-family)';
     const workspaceName = getCurrentWorkspaceName() || 'Global';
     const pkg = context.extension.packageJSON;
+    const aiSettings = {
+        geminiApiKey: apiKey,
+        claudeApiKey: context.globalState.get<string>('claudeApiKey') || '',
+        openaiApiKey: context.globalState.get<string>('openaiApiKey') || '',
+        localEnabled: context.globalState.get<boolean>('localEnabled') || false,
+        baseUrl: context.globalState.get<string>('baseUrl') || 'http://localhost:11434',
+        modelName: context.globalState.get<string>('modelName') || 'llama3.2',
+        mcpConfig: context.globalState.get<string>('mcpConfig') || '',
+        userName: context.globalState.get<string>('userName') || ''
+    };
 
     return `<!DOCTYPE html>
     <html lang="de">
@@ -316,6 +337,7 @@ function getReactWebviewContent(
             window.EXT_NAME = "${pkg.name}";
             window.EXT_VERSION = "${pkg.version}";
             window.WORKSPACE_NAME = "${workspaceName}";
+            window.INITIAL_AI_SETTINGS = ${JSON.stringify(aiSettings)};
         </script>
     </head>
     <body style="margin: 0; padding: 0; background-color: #0b0f19;">

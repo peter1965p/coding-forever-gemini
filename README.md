@@ -45,6 +45,9 @@
 
 ## Changelog
 
+### 2.3.1
+* **Fix**: Bug Gemini API Key wird nun im VS Code Storage gespeichert
+
 ### 2.3.0
 * **Chat-History & Persistent Storage:** Alle Chat-Nachrichten werden automatisch in SQLite gespeichert und können über den History-Drawer geladen werden.
 * **Strukturierte Chat-Ausgaben:** Vollständige Markdown-Unterstützung mit Headings (`# ## ###`), Code-Blöcken mit Syntax-Highlighting, Bullet-Listen und besserer visueller Struktur.
