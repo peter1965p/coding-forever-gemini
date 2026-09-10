@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { vscode } from '../lib/vscodeApi';
 
 declare function acquireVsCodeApi(): {
   postMessage: (message: any) => void;
@@ -64,6 +65,24 @@ export const Dashboard: React.FC = () => {
           opacity: 0.9;
         }
       `}</style>
+
+      <button
+        className="dash-btn"
+        onClick={() => vscode.postMessage({ type: 'createProject' })}
+        style={{
+          background: '#16a34a',
+          color: '#fff',
+          border: 'none',
+          padding: '10px 16px',
+          fontWeight: 'bold',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '12px',
+          marginBottom: '20px'
+        }}
+      >
+        Neues Node-Projekt erstellen
+      </button>
 
       {/* Header Bar */}
       <div style={{

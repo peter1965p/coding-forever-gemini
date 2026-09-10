@@ -1,7 +1,7 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.3.0-orange.svg)
-![VSCode](https://img.shields.io/badge/VS%20Code-1.80%2B-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.0-orange.svg)
+![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 **Direct Gemini Flash Integration without Limits** — Die ultimative VS Code Extension für ungedrosselte KI-Entwicklung, angetrieben direkt von der Google Gemini API. Coding wie Du es willst!
@@ -31,8 +31,18 @@
 * **Sicherheitsfilter & Modi:** Dynamic Bypass Mode und Auto-Accept direkt über UI-Switches oder Einstellungen steuerbar.
 * **Prompt Manager:** Lokaler SQLite3-basierter Manager mit vordefinierten Prompts & eigenen Vorlagen per Kontext-Variablen (`{selection}`, `{file}`).
 * **Native VS Code Quick Fixes:** Direktes Korrigieren von Editor-Fehlern via Code-Actions (Glühbirne) mit einem Klick im Chat.
+* **Projektgenerator:** Erstellt neue Node.js-, TypeScript-, React/Vite- und Next.js-Projekte direkt aus VS Code.
+* **Plattformübergreifend:** Automatische Erkennung von Windows, macOS und Linux inklusive passender `npm`-/`npx`-Befehle und Pfade.
 
 ---
+
+## Voraussetzungen
+
+* VS Code `1.134` oder neuer
+* Node.js inklusive `npm` und `npx` für den Projektgenerator
+* Internetzugang für die Installation von Projektvorlagen und npm-Paketen
+
+Der Projektgenerator funktioniert auf Windows, macOS und Linux. Die Extension erkennt das Betriebssystem sowie die verfügbaren Node.js-Werkzeuge automatisch.
 
 ## Verwendung
 
@@ -41,9 +51,34 @@
 3. Trage über das Zahnrad deinen Google Gemini API Key ein ([Hier kostenlos erstellen](https://aistudio.google.com/api-keys)).
 4. Wähle dein gewünschtes Modell aus und starte das autonome Coding!
 
+### Neues Projekt erstellen
+
+1. Öffne die Command Palette mit `Strg+Shift+P` unter Windows/Linux oder `Cmd+Shift+P` unter macOS.
+2. Starte **Coding Forever: Node-Projekt erstellen**. Alternativ kannst du im Dashboard auf **Neues Node-Projekt erstellen** klicken.
+3. Wähle eine Projektvorlage aus:
+	* Node.js
+	* Node.js + TypeScript
+	* React + Vite
+	* Next.js
+4. Wähle den Zielordner und gib den Namen des neuen Projektordners ein.
+
+Die Extension legt den Projektordner an, führt das passende npm- oder npx-Skript aus und öffnet das fertige Projekt anschließend automatisch in VS Code. Als Standardziel werden vorhandene Ordner in dieser Reihenfolge verwendet:
+
+1. `~/Dev`
+2. `~/Documents/Dev`
+3. Der Ordner neben dem aktuell geöffneten Workspace
+4. Das Home-Verzeichnis
+
+Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projectsDirectory` angepasst werden.
+
 ---
 
 ## Changelog
+
+### 2.4.0
+* **Projektgenerator:** Neue Projekte können direkt aus VS Code mit Node.js, TypeScript, React/Vite oder Next.js erstellt werden.
+* **Automatische Umgebungserkennung:** Windows, macOS und Linux sowie die passenden npm-/npx-Executables und Standardpfade werden automatisch erkannt.
+* **Projektordner öffnen:** Nach erfolgreicher Erstellung öffnet die Extension den neuen Projektordner automatisch in VS Code.
 
 ### 2.3.1
 * **Fix**: Bug Gemini API Key wird nun im VS Code Storage gespeichert
