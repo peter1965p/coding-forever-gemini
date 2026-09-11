@@ -11,7 +11,7 @@ export const Dashboard: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash-lite');
   const [promptText, setPromptText] = useState('');
   const [responseText, setResponseText] = useState('Bereit für Anfragen...');
-  const [extVersion, setExtVersion] = useState('2.3.0');
+  const [extVersion, setExtVersion] = useState('2.4.0');
 
   useEffect(() => {
     // Version aus window global vars auslesen
@@ -65,24 +65,6 @@ export const Dashboard: React.FC = () => {
           opacity: 0.9;
         }
       `}</style>
-
-      <button
-        className="dash-btn"
-        onClick={() => vscode.postMessage({ type: 'createProject' })}
-        style={{
-          background: '#16a34a',
-          color: '#fff',
-          border: 'none',
-          padding: '10px 16px',
-          fontWeight: 'bold',
-          borderRadius: '6px',
-          cursor: 'pointer',
-          fontSize: '12px',
-          marginBottom: '20px'
-        }}
-      >
-        Neues Node-Projekt erstellen
-      </button>
 
       {/* Header Bar */}
       <div style={{
@@ -174,7 +156,7 @@ export const Dashboard: React.FC = () => {
       }}>
         <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '8px', padding: '20px', boxSizing: 'border-box' }}>
           <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            Direkt-Prompt an Gemini
+            Direkt-Prompt an Gemini & Neues Projekt anlegen
           </div>
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '11px', color: '#9ca3af', marginBottom: '6px', textTransform: 'uppercase' }}>Gemini Modell auswählen</label>
@@ -221,23 +203,42 @@ export const Dashboard: React.FC = () => {
               }}
             />
           </div>
-          <button
-            className="dash-btn"
-            onClick={handleSend}
-            style={{
-              background: '#ff6200',
-              color: '#0b0f19',
-              border: 'none',
-              padding: '10px 16px',
-              fontWeight: 'bold',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              width: '100%'
-            }}
-          >
-            Anfrage absenden
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              className="dash-btn"
+              onClick={handleSend}
+              style={{
+                flex: 1,
+                background: '#ff6200',
+                color: '#0b0f19',
+                border: 'none',
+                padding: '10px 16px',
+                fontWeight: 'bold',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              Anfrage absenden
+            </button>
+            <button
+              className="dash-btn"
+              onClick={() => vscode.postMessage({ type: 'createProject' })}
+              style={{
+                flex: '0 0 auto',
+                background: '#384666',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 16px',
+                fontWeight: 'bold',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              Neues Node-Projekt erstellen
+            </button>
+          </div>
         </div>
 
         <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '8px', padding: '20px', boxSizing: 'border-box' }}>
