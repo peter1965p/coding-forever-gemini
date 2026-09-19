@@ -1,8 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { vscode } from '../lib/vscodeApi';
 
+export interface SystemSpecs {
+  cpuModel: string;
+  cpuCores: number;
+  ramGB: number;
+  hasGpu: boolean;
+  gpuName: string;
+  osInfo: string;
+}
+
+export interface RecommendedModel {
+  name: string;
+  desc: string;
+  tag: string;
+}
+
 export interface AiConfig {
   geminiApiKey: string;
+  groqApiKey?: string;
   claudeApiKey?: string;
   openaiApiKey?: string;
   localEnabled: boolean;
@@ -17,6 +33,7 @@ const PRIMARY = '#16a34a';
 
 export const AiSettings: React.FC = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [groqApiKey, setGroqApiKey] = useState('');
   const [claudeApiKey, setClaudeApiKey] = useState('');
   const [openaiApiKey, setOpenaiApiKey] = useState('');
 
@@ -26,6 +43,10 @@ export const AiSettings: React.FC = () => {
   const [localModels, setLocalModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
 
+  // System-Specs & Dynamische Empfehlungen
+  const [specs, setSpecs] = useState<SystemSpecs | null>(null);
+  const [recommendedModels, setRecommendedModels] = useState<RecommendedModel[]>([]);
+
   const [mcpConfig, setMcpConfig] = useState('');
   const [userName, setUserName] = useState('');
   const [saved, setSaved] = useState(false);
@@ -34,6 +55,7 @@ export const AiSettings: React.FC = () => {
     const initialSettings = (window as any).INITIAL_AI_SETTINGS as AiConfig | undefined;
     if (initialSettings) {
       setGeminiApiKey(initialSettings.geminiApiKey || '');
+      setGroqApiKey(initialSettings.groqApiKey || '');
       setClaudeApiKey(initialSettings.claudeApiKey || '');
       setOpenaiApiKey(initialSettings.openaiApiKey || '');
       setLocalEnabled(initialSettings.localEnabled ?? false);
@@ -48,6 +70,7 @@ export const AiSettings: React.FC = () => {
       if (message.type === 'LOAD_AI_SETTINGS') {
         const payload: AiConfig = message.payload;
         if (payload.geminiApiKey) setGeminiApiKey(payload.geminiApiKey);
+        if (payload.groqApiKey) setGroqApiKey(payload.groqApiKey);
         if (payload.claudeApiKey) setClaudeApiKey(payload.claudeApiKey);
         if (payload.openaiApiKey) setOpenaiApiKey(payload.openaiApiKey);
         if (payload.localEnabled !== undefined) setLocalEnabled(payload.localEnabled);
@@ -55,8 +78,12 @@ export const AiSettings: React.FC = () => {
         if (payload.modelName) setModelName(payload.modelName);
         if (payload.mcpConfig) setMcpConfig(payload.mcpConfig);
         if (payload.userName) setUserName(payload.userName);
+      } else if (message.type === 'SYSTEM_SPECS_SCANNED') {
+        setSpecs(message.specs);
+        setRecommendedModels(message.recommended || []);
       }
     };
+
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
@@ -79,6 +106,8 @@ export const AiSettings: React.FC = () => {
         if (models.length > 0 && !models.includes(modelName)) {
           setModelName(models[0]);
         }
+      } else {
+        setLocalModels([]);
       }
     } catch (e) {
       console.error('Konnte lokale Modelle nicht abrufen:', e);
@@ -88,10 +117,24 @@ export const AiSettings: React.FC = () => {
     }
   };
 
+  const installModel = (modelToInstall: string) => {
+    vscode.postMessage({
+      type: 'executeCommand',
+      command: `ollama run ${modelToInstall}`
+    });
+  };
+
   const handleSave = () => {
     const config: AiConfig = {
-      geminiApiKey, claudeApiKey, openaiApiKey,
-      localEnabled, baseUrl, modelName, mcpConfig, userName
+      geminiApiKey,
+      groqApiKey,
+      claudeApiKey,
+      openaiApiKey,
+      localEnabled,
+      baseUrl,
+      modelName,
+      mcpConfig,
+      userName
     };
     vscode.postMessage({ type: 'SAVE_AI_SETTINGS', payload: config });
     setSaved(true);
@@ -102,20 +145,21 @@ export const AiSettings: React.FC = () => {
     <div style={{ padding: '16px 20px', color: 'var(--vscode-foreground)', fontFamily: 'var(--vscode-font-family)', maxWidth: '520px', margin: '0 auto' }}>
 
       <h2 style={{
-      position: 'relative',
-      backgroundImage: 'linear-gradient(to bottom, #fed7aa, #f97316, #431407)',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      filter: 'drop-shadow(0 0 70px rgba(234, 88, 12, 0.5))',
-      textTransform: 'uppercase',
-      transition: 'all 1s ease'
-    }}>
+        position: 'relative',
+        backgroundImage: 'linear-gradient(to bottom, #fed7aa, #f97316, #431407)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        filter: 'drop-shadow(0 0 70px rgba(234, 88, 12, 0.5))',
+        textTransform: 'uppercase',
+        transition: 'all 1s ease'
+      }}>
         AI Engine
       </h2>
       <p style={{ color: 'var(--vscode-descriptionForeground)', fontSize: '0.85em', marginBottom: '20px', lineHeight: '1.4' }}>
         Gemini ist als Standard aktiv. Optional lassen sich Cloud-Keys, lokale Modelle und MCP-Server zuschalten.
       </p>
 
+      {/* DEVELOPER NAME */}
       <div style={sectionStyle}>
         <label style={labelStyle}>Entwickler-Name (Greeting)</label>
         <input
@@ -127,6 +171,7 @@ export const AiSettings: React.FC = () => {
         />
       </div>
 
+      {/* CLOUD PROVIDERS */}
       <div style={sectionStyle}>
         <div style={sectionTitle}>⚡ Cloud Provider</div>
 
@@ -137,6 +182,18 @@ export const AiSettings: React.FC = () => {
             value={geminiApiKey}
             onChange={(e) => setGeminiApiKey(e.target.value)}
             placeholder="AIzaSy..."
+            style={inputStyle}
+          />
+        </div>
+
+        {/* NEU: GROQ INPUT */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={labelStyle}>Groq API Key (Kostenlos & Ultra-Schnell)</label>
+          <input
+            type="password"
+            value={groqApiKey}
+            onChange={(e) => setGroqApiKey(e.target.value)}
+            placeholder="gsk_..."
             style={inputStyle}
           />
         </div>
@@ -164,6 +221,7 @@ export const AiSettings: React.FC = () => {
         </div>
       </div>
 
+      {/* LOCAL MODELS */}
       <div style={sectionStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -220,21 +278,47 @@ export const AiSettings: React.FC = () => {
             <div>
               <label style={labelStyle}>Ausgewähltes Lokales Modell</label>
               {localModels.length > 0 ? (
-                <select value={modelName} onChange={(e) => setModelName(e.target.value)} style={inputStyle}>
-                  {localModels.map((m) => (<option key={m} value={m}>{m}</option>))}
-                </select>
+                <>
+                  <select value={modelName} onChange={(e) => setModelName(e.target.value)} style={inputStyle}>
+                    {localModels.map((m) => (<option key={m} value={m}>{m}</option>))}
+                  </select>
+                  <div style={{ fontSize: '0.75em', color: PRIMARY, marginTop: '4px' }}>
+                    ✓ {localModels.length} lokale Modelle erfolgreich erkannt.
+                  </div>
+                </>
               ) : (
-                <input
-                  type="text"
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                  placeholder="z. B. llama3.2 (keine Modelle gefunden? Endpoint prüfen)"
-                  style={inputStyle}
-                />
-              )}
-              {localModels.length > 0 && (
-                <div style={{ fontSize: '0.75em', color: PRIMARY, marginTop: '4px' }}>
-                  ✓ {localModels.length} lokale Modelle erfolgreich erkannt.
+                /* NEU: EMPFEHLUNGSPANEL WENN DYNAMISCHER SCAN 0 MODELLE LIEFERT */
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '6px', border: '1px dashed var(--vscode-input-border)', marginTop: '6px' }}>
+                  <div style={{ fontSize: '0.85em', color: '#eab308', fontWeight: 'bold', marginBottom: '6px' }}>
+                    ⚠️ Keine Ollama-Modelle gefunden!
+                  </div>
+
+                  {specs && (
+                    <div style={{ fontSize: '0.78em', color: 'var(--vscode-descriptionForeground)', marginBottom: '10px', lineHeight: '1.3' }}>
+                      <strong>Gescannte Hardware:</strong> {specs.cpuModel} ({specs.cpuCores} Kerne) | {specs.ramGB} GB RAM | GPU: <i>{specs.gpuName}</i>
+                    </div>
+                  )}
+
+                  {recommendedModels.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                      {recommendedModels.map((m) => (
+                        <div key={m.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--vscode-input-background)', padding: '8px 10px', borderRadius: '4px', border: '1px solid var(--vscode-panel-border)' }}>
+                          <div>
+                            <div style={{ fontSize: '0.85em', fontWeight: 'bold' }}>
+                              {m.name} <span style={{ fontSize: '0.7em', padding: '1px 5px', background: PRIMARY, color: '#fff', borderRadius: '3px', marginLeft: '6px' }}>{m.tag}</span>
+                            </div>
+                            <div style={{ fontSize: '0.75em', color: 'var(--vscode-descriptionForeground)' }}>{m.desc}</div>
+                          </div>
+                          <button
+                            onClick={() => installModel(m.name)}
+                            style={{ padding: '4px 8px', background: ACCENT, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8em', fontWeight: 'bold', whiteSpace: 'nowrap', marginLeft: '8px' }}
+                          >
+                            📥 Installieren
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -242,6 +326,7 @@ export const AiSettings: React.FC = () => {
         )}
       </div>
 
+      {/* MCP SERVER */}
       <div style={sectionStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
           <div style={sectionTitle}>🔌 MCP Server (Model Context Protocol)</div>

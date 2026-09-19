@@ -3,8 +3,151 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
+import { promisify } from 'util';
 import { PromptDatabaseManager } from './lib/database';
+
+// Promisifizierte Version von exec für asynchrone Nutzung
+const execAsync = promisify(exec);
+
+export interface SystemSpecs {
+    cpuModel: string;
+    cpuCores: number;
+    cpuSpeed: number; // in GHz
+    ramGB: number;
+    hasGpu: boolean;
+    gpuName: string;
+    osInfo: string;
+}
+
+export interface RecommendedModel {
+    name: string;
+    desc: string;
+    tag: string;
+}
+
+// ---------------------------------------------------------------------------
+// 1. HARDWARE SCANNER & DYNAMISCHE EMPFEHLUNGEN
+// ---------------------------------------------------------------------------
+async function getSystemSpecs(): Promise<SystemSpecs> {
+    const cpuCores = os.cpus().length;
+    const cpuModel = os.cpus()[0]?.model || 'Es wurde eine unbekannte CPU erkannt';
+    const ramGB = Math.round(os.totalmem() / (1024 ** 3));
+    const cpuSpeed = os.cpus()[0]?.speed ? os.cpus()[0].speed / 1000 : 0; // in GHz
+
+    let gpuName = 'Integrierte GPU, keine dedizierte GPU erkannt';
+    let hasGpu = false;
+
+    // Auf Linux / CachyOS PCI-Geräte abfragen
+    if (process.platform === 'linux') {
+        try {
+            const { stdout } = await execAsync('lspci -nnk | grep -i vga -A3');
+            if (stdout.toLowerCase().includes('nvidia') || stdout.toLowerCase().includes('amd') || stdout.toLowerCase().includes('radeon')) {
+                hasGpu = true;
+                gpuName = stdout.split('\n')[0] || gpuName;
+            }
+        } catch (error) {
+            console.error('Fehler beim Auslesen der GPU-Informationen:', error);
+        }
+    }
+    return {
+        cpuModel,
+        cpuCores,
+        cpuSpeed,
+        ramGB,
+        hasGpu,
+        gpuName,
+        osInfo: `${os.type()} ${os.release()}${os.arch()}`
+    };
+}
+
+function getDynamicModelRecommendations(specs: SystemSpecs): RecommendedModel[] {
+    const recommendations: RecommendedModel[] = [];
+
+    if (!specs.hasGpu || specs.ramGB <= 16) {
+        recommendations.push({
+            name: 'qwen2.5-coder:1.5b',
+            desc: `⚡ Sehr schnell für deine ${specs.cpuCores}-Kern CPU & ${specs.ramGB} GB RAM.`,
+            tag: 'Optimal'
+        });
+        recommendations.push({
+            name: 'deepseek-coder:1.3b',
+            desc: '⚡ Leichtgewichtig für flüssige Autovervollständigung.',
+            tag: 'Leicht'
+        });
+
+        if (specs.ramGB >= 16) {
+            recommendations.push({
+                name: 'qwen2.5-coder:7b',
+                desc: `🧠 Höhere Präzision für deine ${specs.ramGB} GB RAM (auf CPU etwas langsamer).`,
+                tag: 'Präzise'
+            });
+        }
+    } else {
+        recommendations.push({
+            name: 'qwen2.5-coder:7b',
+            desc: '🚀 Optimal für VRAM-beschleunigte Systeme.',
+            tag: 'Empfohlen'
+        });
+        recommendations.push({
+            name: 'deepseek-coder:6.7b',
+            desc: '🧠 Ausgewogenes Modell für komplexe Logik.',
+            tag: 'Präzise'
+        });
+    }
+
+    return recommendations;
+}
+
+// ---------------------------------------------------------------------------
+// 1b. GROQ MODELL-LISTE (LIVE VON DER GROQ API GEHOLT)
+// ---------------------------------------------------------------------------
+export interface GroqModelInfo {
+    id: string;
+    contextWindow?: number;
+    ownedBy?: string;
+}
+
+// Fallback-Liste, falls der Live-Abruf fehlschlägt (kein Key, Netzwerkfehler, Rate-Limit).
+const GROQ_FALLBACK_MODELS: GroqModelInfo[] = [
+    { id: 'llama-3.3-70b-versatile' },
+    { id: 'llama-3.1-8b-instant' },
+    { id: 'openai/gpt-oss-120b' },
+    { id: 'openai/gpt-oss-20b' },
+    { id: 'moonshotai/kimi-k2-instruct' },
+    { id: 'qwen/qwen3-32b' }
+];
+
+async function fetchGroqModels(groqApiKey: string): Promise<GroqModelInfo[]> {
+    const res = await fetch('https://api.groq.com/openai/v1/models', {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${groqApiKey}` }
+    });
+
+    if (!res.ok) {
+        throw new Error(`Groq Models-Endpoint antwortete mit ${res.status}`);
+    }
+
+    const data: any = await res.json();
+    const rawModels: any[] = Array.isArray(data.data) ? data.data : [];
+
+    // Nur Chat-taugliche Modelle anzeigen: Whisper (Audio) und Guard/Moderation-Modelle rausfiltern
+    const filtered = rawModels.filter(m => {
+        const id = String(m.id || '').toLowerCase();
+        // Audio/TTS/Voice- und reine Moderations-Modelle raus – das sind keine Chat-/Coding-Modelle
+        const nonChatMarkers = ['whisper', 'tts', 'guard', 'orpheus', 'canopylabs', 'playai'];
+        return !nonChatMarkers.some(marker => id.includes(marker));
+    });
+
+    const models: GroqModelInfo[] = filtered.map(m => ({
+        id: m.id,
+        contextWindow: m.context_window,
+        ownedBy: m.owned_by
+    }));
+
+    models.sort((a, b) => a.id.localeCompare(b.id));
+    return models.length > 0 ? models : GROQ_FALLBACK_MODELS;
+}
 
 // Globaler In-Memory Store für den vorab generierten Code im Diff-Fenster
 const diffContentStore = new Map<string, string>();
@@ -13,7 +156,7 @@ const diffContentStore = new Map<string, string>();
 let activeSidebarView: vscode.WebviewView | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
-    console.log('Extension "coding-forever" ist aktiv mit Agentic-Power, React-Frontend und SQLite Support.');
+    console.log('Extension "coding-forever" ist aktiv mit Agentic-Power, React-Frontend, Groq-Support & SQLite.');
 
     // --- 0. DIFF CONTENT PROVIDER REGISTRIEREN ---
     registerDiffProvider(context);
@@ -27,21 +170,19 @@ export async function activate(context: vscode.ExtensionContext) {
     // --- 3. SQLITE DATENBANK MANAGER INITIALISIEREN ---
     const dbManager = await PromptDatabaseManager.getInstance(context);
 
-    // 1. Chat Tab öffnen
+    // Commands registrieren
     context.subscriptions.push(
         vscode.commands.registerCommand('coding-forever.openChatTab', async () => {
             await CodingForeverPanel.createOrShow(context, 'chat');
         })
     );
 
-    // 2. Dashboard öffnen
     context.subscriptions.push(
         vscode.commands.registerCommand('coding-forever.openDashboard', async () => {
             await CodingForeverPanel.createOrShow(context, 'dashboard');
         })
     );
 
-    // 3. Settings öffnen
     context.subscriptions.push(
         vscode.commands.registerCommand('coding-forever.openSettings', async () => {
             await CodingForeverPanel.createOrShow(context, 'settings');
@@ -54,10 +195,9 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // 4. Native Header-Action: Chat History umschalten
+    // Header-Action: Chat History umschalten
     context.subscriptions.push(
         vscode.commands.registerCommand('codingForever.openHistory', async () => {
-            // Sidebar anzeigen/fokussieren, falls sie nicht geöffnet ist
             if (activeSidebarView) {
                 activeSidebarView.show?.(true);
                 activeSidebarView.webview.postMessage({ type: 'toggleHistory' });
@@ -65,7 +205,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 await vscode.commands.executeCommand('codingForeverView.focus');
             }
 
-            // Nachrichten an eventuell offene Panels schicken
             CodingForeverPanel.currentPanels.forEach(panel => {
                 panel.postMessage({ type: 'toggleHistory' });
             });
@@ -96,21 +235,18 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Command registrieren, der aufgerufen wird wenn man den Quick Fix anklickt
+    // Command Quick Fix
     const fixErrorCommand = vscode.commands.registerCommand(
         'coding-forever.fixError',
         async (document: vscode.TextDocument, range: vscode.Range, diagnostic: vscode.Diagnostic) => {
-            // Sidebar/Webview in den Vordergrund holen
             await vscode.commands.executeCommand('codingForeverView.focus');
 
-            // Fehler-Kontext vorbereiten
             const codeSnippet = document.getText(range);
             const prompt = `Behebe folgenden Fehler in der Datei ${path.basename(document.fileName)}:\n\n` +
                 `Fehler: ${diagnostic.message}\n` +
                 `Zeile: ${range.start.line + 1}\n\n` +
                 `Betroffener Code:\n\`\`\`${document.languageId}\n${codeSnippet}\n\`\`\``;
 
-            // Prompt direkt an die aktive Sidebar übergeben
             if (activeSidebarView) {
                 activeSidebarView.webview.postMessage({
                     type: 'setPrompt',
@@ -120,7 +256,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    // Quick Fix Provider für alle Sprachen registrieren
+    // Quick Fix Provider
     const codeActionProvider = vscode.languages.registerCodeActionsProvider(
         { scheme: 'file' },
         {
@@ -235,7 +371,13 @@ async function handleWebviewMessage(
         }
         // End Session Management
         else if (msg.type === 'runChat') {
-            await handleAgent(target, context, msg.prompt, msg.model || 'gemini-3.6-flash', msg.bypass, msg.autoAccept);
+            // Automatischer Fallback auf Groq, falls Modell nicht gesetzt aber Key vorhanden
+            let selectedModel = msg.model;
+            const groqApiKey = context.globalState.get<string>('groqApiKey');
+            if ((!selectedModel || selectedModel.includes('gemini')) && groqApiKey) {
+                selectedModel = 'groq:llama-3.3-70b-versatile';
+            }
+            await handleAgent(target, context, msg.prompt, selectedModel || 'gemini-3.6-flash', msg.bypass, msg.autoAccept);
         } else if (msg.type === 'suggestNext') {
             await handleSuggestNext(target, context);
         } else if (msg.type === 'applyCodeToEditor') {
@@ -260,6 +402,7 @@ async function handleWebviewMessage(
         } else if (msg.type === 'SAVE_AI_SETTINGS') {
             const config = msg.payload || {};
             await context.globalState.update('geminiApiKey', config.geminiApiKey || '');
+            await context.globalState.update('groqApiKey', config.groqApiKey || '');
             await context.globalState.update('claudeApiKey', config.claudeApiKey || '');
             await context.globalState.update('openaiApiKey', config.openaiApiKey || '');
             await context.globalState.update('localEnabled', config.localEnabled ?? false);
@@ -267,7 +410,34 @@ async function handleWebviewMessage(
             await context.globalState.update('modelName', config.modelName || 'llama3.2');
             await context.globalState.update('mcpConfig', config.mcpConfig || '');
             await context.globalState.update('userName', config.userName || '');
+
             vscode.window.showInformationMessage('AI-Einstellungen erfolgreich gespeichert!');
+
+            // Benachrichtige alle aktiven Webviews über die neuen AI Settings für dynamisches Dropdown
+            const updatedAiSettings = getAiSettings(context);
+            if (activeSidebarView) {
+                activeSidebarView.webview.postMessage({ type: 'aiSettingsUpdated', settings: updatedAiSettings });
+            }
+            CodingForeverPanel.currentPanels.forEach(panel => {
+                panel.postMessage({ type: 'aiSettingsUpdated', settings: updatedAiSettings });
+            });
+
+            // Nach dem Speichern eines (neuen) Groq-Keys direkt die Modell-Liste neu laden
+            if (config.groqApiKey) {
+                await sendGroqModels(target, config.groqApiKey);
+            }
+        } else if (msg.type === 'getGroqModels') {
+            const groqApiKey = context.globalState.get<string>('groqApiKey');
+            await sendGroqModels(target, groqApiKey);
+        } else if (msg.type === 'SCAN_SYSTEM') {
+            const specs = await getSystemSpecs();
+            const recommended = getDynamicModelRecommendations(specs);
+            
+            target.webview.postMessage({
+                type: 'SYSTEM_SPECS_SCANNED',
+                specs,
+                recommended
+            });
         } else if (msg.type === 'checkUpdates') {
             checkForGitHubUpdates(context, true);
         } else if (msg.type === 'saveSettings') {
@@ -278,8 +448,7 @@ async function handleWebviewMessage(
                 await context.globalState.update('chatFont', msg.chatFont);
             }
             vscode.window.showInformationMessage('Einstellungen erfolgreich gespeichert!');
-        }
-        else if (msg.type === 'getPrompts' || msg.command === 'getPrompts') {
+        } else if (msg.type === 'getPrompts' || msg.command === 'getPrompts') {
             const workspaceName = getCurrentWorkspaceName();
             const prompts = await dbManager.getPrompts(workspaceName);
             target.webview.postMessage({ command: 'loadPrompts', data: prompts, type: 'loadPrompts' });
@@ -307,6 +476,39 @@ async function handleWebviewMessage(
     }
 }
 
+/**
+ * Holt die verfügbaren Groq-Modelle (live von der API, mit Fallback-Liste)
+ * und schickt sie ans Webview.
+ */
+async function sendGroqModels(target: { webview: vscode.Webview }, groqApiKey: string | undefined) {
+    if (!groqApiKey) {
+        target.webview.postMessage({ type: 'groqModelsLoaded', models: [], error: 'no-key' });
+        return;
+    }
+
+    try {
+        const models = await fetchGroqModels(groqApiKey);
+        target.webview.postMessage({ type: 'groqModelsLoaded', models });
+    } catch (e: any) {
+        console.error('Groq Modelle konnten nicht geladen werden, nutze Fallback-Liste:', e.message);
+        target.webview.postMessage({ type: 'groqModelsLoaded', models: GROQ_FALLBACK_MODELS, error: 'fetch-failed' });
+    }
+}
+
+function getAiSettings(context: vscode.ExtensionContext) {
+    return {
+        geminiApiKey: context.globalState.get<string>('geminiApiKey') || '',
+        groqApiKey: context.globalState.get<string>('groqApiKey') || '',
+        claudeApiKey: context.globalState.get<string>('claudeApiKey') || '',
+        openaiApiKey: context.globalState.get<string>('openaiApiKey') || '',
+        localEnabled: context.globalState.get<boolean>('localEnabled') || false,
+        baseUrl: context.globalState.get<string>('baseUrl') || 'http://localhost:11434',
+        modelName: context.globalState.get<string>('modelName') || 'llama3.2',
+        mcpConfig: context.globalState.get<string>('mcpConfig') || '',
+        userName: context.globalState.get<string>('userName') || ''
+    };
+}
+
 function getReactWebviewContent(
     webview: vscode.Webview,
     context: vscode.ExtensionContext,
@@ -321,16 +523,7 @@ function getReactWebviewContent(
     const chatFont = context.globalState.get<string>('chatFont') || 'var(--vscode-font-family)';
     const workspaceName = getCurrentWorkspaceName() || 'Global';
     const pkg = context.extension.packageJSON;
-    const aiSettings = {
-        geminiApiKey: apiKey,
-        claudeApiKey: context.globalState.get<string>('claudeApiKey') || '',
-        openaiApiKey: context.globalState.get<string>('openaiApiKey') || '',
-        localEnabled: context.globalState.get<boolean>('localEnabled') || false,
-        baseUrl: context.globalState.get<string>('baseUrl') || 'http://localhost:11434',
-        modelName: context.globalState.get<string>('modelName') || 'llama3.2',
-        mcpConfig: context.globalState.get<string>('mcpConfig') || '',
-        userName: context.globalState.get<string>('userName') || ''
-    };
+    const aiSettings = getAiSettings(context);
 
     return `<!DOCTYPE html>
     <html lang="de">
@@ -375,7 +568,8 @@ async function handleExecutePrompt(
         .replace(/\{selection\}/g, activeCode)
         .replace(/\{file\}/g, fileName);
 
-    const defaultModel = 'gemini-3.6-flash';
+    const groqApiKey = context.globalState.get<string>('groqApiKey');
+    const defaultModel = groqApiKey ? 'groq:llama-3.3-70b-versatile' : 'gemini-3.6-flash';
     await handleAgent(target, context, processedPrompt, defaultModel, false, false);
 }
 
@@ -502,6 +696,57 @@ const AGENT_TOOLS = [{
     ]
 }];
 
+// Gleiche vier Tools, aber im OpenAI-kompatiblen Schema (tools/tool_calls) für Groq.
+const OPENAI_AGENT_TOOLS = [
+    {
+        type: 'function',
+        function: {
+            name: 'list_files',
+            description: 'Listet alle Dateien im aktuellen Workspace auf (ohne node_modules).',
+            parameters: { type: 'object', properties: {}, required: [] }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'read_file',
+            description: 'Liest den Inhalt einer Datei relativ zum Workspace-Root.',
+            parameters: {
+                type: 'object',
+                properties: { path: { type: 'string', description: 'Relativer Pfad zur Datei' } },
+                required: ['path']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'write_file',
+            description: 'Erstellt oder überschreibt eine Datei relativ zum Workspace-Root.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Relativer Pfad zur Datei' },
+                    content: { type: 'string', description: 'Kompletter neuer Dateiinhalt' }
+                },
+                required: ['path', 'content']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'run_command',
+            description: 'Führt einen Terminal-Befehl im Workspace-Root aus (z.B. npm install). Nur nutzen wenn wirklich nötig.',
+            parameters: {
+                type: 'object',
+                properties: { command: { type: 'string' } },
+                required: ['command']
+            }
+        }
+    }
+];
+
 function toolStatusLabel(name: string, args: any): string {
     switch (name) {
         case 'list_files': return '📂 Scanne Projektstruktur...';
@@ -565,11 +810,9 @@ async function handleAgent(
     bypass: boolean,
     autoAccept: boolean
 ) {
-    const apiKey = context.globalState.get<string>('geminiApiKey');
-    if (!apiKey) {
-        target.webview.postMessage({ type: 'response', text: 'Fehler: Kein API-Key hinterlegt!' });
-        return;
-    }
+    const isLocal = context.globalState.get<boolean>('localEnabled') || false;
+    const groqApiKey = context.globalState.get<string>('groqApiKey');
+    const geminiApiKey = context.globalState.get<string>('geminiApiKey');
 
     const editor = vscode.window.activeTextEditor;
     const activeFileName = editor ? vscode.workspace.asRelativePath(editor.document.uri) : 'keine';
@@ -584,11 +827,142 @@ Arbeite iterativ und diszipliniert:
 Aktive Datei im Editor: ${activeFileName}
 Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`;
 
+    // ---------------------------------------------------------------------------
+    // PFAD A: GROQ CLOUD ENGINE
+    // ---------------------------------------------------------------------------
+    if (model.startsWith('groq:')) {
+        if (!groqApiKey) {
+            target.webview.postMessage({ type: 'response', text: 'Fehler: Kein Groq API-Key hinterlegt! Bitte unter AI Engine eintragen.' });
+            return;
+        }
+
+        const selectedGroqModel = model.replace('groq:', '') || 'llama-3.3-70b-versatile';
+        target.webview.postMessage({ type: 'status', text: `⚡ Sende Anfrage an Groq LPU Cloud (${selectedGroqModel})...` });
+
+        // Agentic Loop, analog zu Pfad C (Gemini), aber im OpenAI-kompatiblen tools/tool_calls-Schema.
+        const groqMessages: any[] = [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: prompt }
+        ];
+        const maxGroqTurns = 10;
+
+        try {
+            for (let turn = 0; turn < maxGroqTurns; turn++) {
+                const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${groqApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: selectedGroqModel,
+                        messages: groqMessages,
+                        tools: OPENAI_AGENT_TOOLS,
+                        tool_choice: 'auto',
+                        temperature: 0.2
+                    })
+                });
+
+                if (!res.ok) {
+                    const errData: any = await res.json();
+                    target.webview.postMessage({ type: 'response', text: `Groq Fehler: ${errData.error?.message || res.statusText}` });
+                    return;
+                }
+
+                const data: any = await res.json();
+                const message = data.choices?.[0]?.message;
+
+                if (!message) {
+                    target.webview.postMessage({ type: 'response', text: 'Keine Antwort von Groq erhalten.' });
+                    return;
+                }
+
+                const toolCalls: any[] = message.tool_calls || [];
+
+                if (toolCalls.length === 0) {
+                    target.webview.postMessage({ type: 'response', text: message.content || 'Keine Antwort von Groq erhalten.' });
+                    return;
+                }
+
+                // Assistant-Nachricht mit den angeforderten Tool-Calls in den Verlauf übernehmen
+                groqMessages.push(message);
+
+                for (const call of toolCalls) {
+                    const toolName = call.function?.name;
+                    let toolArgs: any = {};
+                    try {
+                        toolArgs = JSON.parse(call.function?.arguments || '{}');
+                    } catch {
+                        toolArgs = {};
+                    }
+
+                    target.webview.postMessage({ type: 'status', text: toolStatusLabel(toolName, toolArgs) });
+                    const result = await executeTool(toolName, toolArgs, autoAccept);
+
+                    groqMessages.push({
+                        role: 'tool',
+                        tool_call_id: call.id,
+                        content: JSON.stringify(result)
+                    });
+                }
+            }
+
+            target.webview.postMessage({ type: 'response', text: '⚠️ Maximale Anzahl an Schritten (10) erreicht, ohne abzuschließen.' });
+            return;
+
+        } catch (e: any) {
+            target.webview.postMessage({ type: 'response', text: `Verbindungsfehler zu Groq: ${e.message}` });
+            return;
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // PFAD B: LOKALE OLLAMA ENGINE
+    // ---------------------------------------------------------------------------
+    if (isLocal) {
+        const baseUrl = context.globalState.get<string>('baseUrl') || 'http://localhost:11434';
+        const localModel = context.globalState.get<string>('modelName') || 'llama3.2';
+        target.webview.postMessage({ type: 'status', text: `🖥️ Sende Anfrage an Ollama (${localModel})...` });
+
+        try {
+            const cleanUrl = baseUrl.replace(/\/v1\/?$/, '');
+            const res = await fetch(`${cleanUrl}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: localModel,
+                    prompt: `${systemInstruction}\n\nUser Prompt:\n${prompt}`,
+                    stream: false
+                })
+            });
+
+            if (!res.ok) {
+                target.webview.postMessage({ type: 'response', text: `Ollama Fehler: ${res.statusText}` });
+                return;
+            }
+
+            const data: any = await res.json();
+            target.webview.postMessage({ type: 'response', text: data.response || 'Keine Antwort von Ollama erhalten.' });
+            return;
+        } catch (e: any) {
+            target.webview.postMessage({ type: 'response', text: `Verbindungsfehler zu Ollama (${baseUrl}): ${e.message}` });
+            return;
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // PFAD C: GEMINI CLOUD ENGINE (Mit Tool-Support)
+    // ---------------------------------------------------------------------------
+    if (!geminiApiKey) {
+        target.webview.postMessage({ type: 'response', text: 'Fehler: Kein Gemini API-Key hinterlegt!' });
+        return;
+    }
+
     let contents: any[] = [{ role: 'user', parts: [{ text: prompt }] }];
     target.webview.postMessage({ type: 'status', text: '🤖 Plane Vorgehen...' });
 
     const selectedModel = model || 'gemini-3.6-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${geminiApiKey}`;
     const maxTurns = 10;
 
     try {

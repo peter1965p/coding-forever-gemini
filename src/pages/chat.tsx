@@ -136,6 +136,10 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
+  const [groqModels, setGroqModels] = useState<string[]>([]);
+  const [groqKeySet, setGroqKeySet] = useState<boolean>(
+    Boolean((window as any).INITIAL_AI_SETTINGS?.groqApiKey)
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -158,6 +162,9 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
 
     // History laden
     postToVsCode({ type: 'loadHistory' });
+
+    // Verfügbare Groq-Modelle live laden (falls ein Key hinterlegt ist)
+    postToVsCode({ type: 'getGroqModels' });
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
@@ -193,6 +200,20 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
         setMessages((prev) => [...prev, { sender: 'status', text: message.text }]);
       } else if (message.type === 'sessionLoaded') {
         setMessages(message.messages || []);
+      } else if (message.type === 'groqModelsLoaded') {
+        const ids: string[] = (message.models || []).map((m: any) => (typeof m === 'string' ? m : m.id));
+        setGroqModels(ids);
+        if (ids.length > 0) {
+          setGroqKeySet(true);
+        }
+      } else if (message.type === 'aiSettingsUpdated') {
+        const hasKey = Boolean(message.settings?.groqApiKey);
+        setGroqKeySet(hasKey);
+        if (hasKey) {
+          postToVsCode({ type: 'getGroqModels' });
+        } else {
+          setGroqModels([]);
+        }
       }
     };
 
@@ -681,8 +702,24 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
               fontSize: '11px'
             }}
           >
-            <option value="gemini-3.6-flash">gemini-3.6-flash</option>
-            <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
+            <optgroup label="Gemini">
+              <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+              <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
+            </optgroup>
+
+            <optgroup label={groqKeySet ? '⚡ Groq' : '⚡ Groq (kein API-Key)'}>
+              {groqModels.length > 0 ? (
+                groqModels.map((id) => (
+                  <option key={id} value={`groq:${id}`}>
+                    {id}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled>
+                  {groqKeySet ? 'Lade Groq-Modelle...' : 'Key unter AI Engine hinterlegen'}
+                </option>
+              )}
+            </optgroup>
           </select>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

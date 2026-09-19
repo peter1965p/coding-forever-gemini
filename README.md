@@ -26,8 +26,8 @@
 * **Strukturierte Chat-Ausgaben:** Markdown-Support mit Headings, Code-Blöcken, Listen und besserer visueller Hierarchie – wie ein echter AI-Assistant.
 * **Chat-Session Management:** Automatische Session-Verwaltung mit Titeln, Timestamps und Lösch-Funktionen direkt in der History.
 * **Chat-History Drawer & Header-Badges:** Synchronisierte Verlaufssteuerung und visuelle Status-Badges (`Agent [ON]`, `Bypass [ON]`, `Accept [ON]`) direkt in der Live-Headerleiste.
-* **Direkte API-Anbindung:** Kein unnötiges Abo und keine künstlichen Limits – direkter Zugriff auf Gemini Flash und Pro Modelle.
-* **Flexibles Engine-Management:** Nutzen von Google Gemini oder Einbindung lokaler Modelle (z. B. Ollama) über SQLite-Datenbank-Anbindung.
+* **Direkte API-Anbindung:** Kein unnötiges Abo und keine künstlichen Limits – direkter Zugriff auf Claude API, Groq API, Gemini Flash und Pro Modelle.
+* **Flexibles Engine-Management:** Nutzen von Groq, Google Gemini oder Einbindung lokaler Modelle (z. B. Ollama) über SQLite-Datenbank-Anbindung.
 * **Sicherheitsfilter & Modi:** Dynamic Bypass Mode und Auto-Accept direkt über UI-Switches oder Einstellungen steuerbar.
 * **Prompt Manager:** Lokaler SQLite3-basierter Manager mit vordefinierten Prompts & eigenen Vorlagen per Kontext-Variablen (`{selection}`, `{file}`).
 * **Native VS Code Quick Fixes:** Direktes Korrigieren von Editor-Fehlern via Code-Actions (Glühbirne) mit einem Klick im Chat.
@@ -74,6 +74,19 @@ Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projects
 ---
 
 ## Changelog
+
+### 2.6.0
+* **Groq Agentic Chat:** 
+
+* **OPENAI_AGENT_TOOLS:** dieselben vier Tools (list_files, read_file, write_file, run_command) wie bei Gemini, aber im OpenAI-kompatiblen tools/function-Schema, das Groq erwartet.
+
+* **Groq-Pfad umgebaut:** statt einem einzelnen fetch-Call jetzt eine echte Agentic-Loop (max. 10 Turns, wie bei Gemini) – Modell bekommt Tools angeboten, tool_calls werden erkannt, über executeTool() ausgeführt (inkl. Diff-Anzeige vor write_file, Bestätigungs-Dialog wenn autoAccept aus ist), Ergebnis als role: 'tool'-Message zurück in den Verlauf.
+
+* **Filter-Bug gefixt:** fetchGroqModels() schließt jetzt auch orpheus, canopylabs, playai aus – die TTS-Modelle tauchen im Dropdown nicht mehr auf.
+
+### 2.5.0
+* **Groq Coding:** Einbindung von dem Groq SDK und allen Groq Modellen in das Modell Menü im Chatmodul
+* **Vorbereitung der System auslesung (Hardware)** In der nächsten Revision wird der Hardware scan angepasst für Lokale Modelle
 
 ### 2.4.0
 * **Projektgenerator:** Neue Projekte können direkt aus VS Code mit Node.js, TypeScript, React/Vite oder Next.js erstellt werden.

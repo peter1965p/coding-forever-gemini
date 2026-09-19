@@ -2,7 +2,7 @@
     "name": "coding-forever",
     "displayName": "Coding Forever",
     "description": "Direct Gemini Flash Integration without Limits",
-    "version": "2.4.0",
+    "version": "2.6.0",
     "publisher": "PeterPaeffgen",
     "author": {
         "name": "Peter Päffgen",
@@ -24,21 +24,26 @@
     "main": "./dist/extension.js",
     "contributes": {
         "viewsContainers": {
-            "activitybar": [{
-                "id": "codingForeverSidebar",
-                "title": "Coding Forever",
-                "icon": "media/icon.svg"
-            }]
+            "activitybar": [
+                {
+                    "id": "codingForeverSidebar",
+                    "title": "Coding Forever",
+                    "icon": "media/icon.svg"
+                }
+            ]
         },
         "views": {
-            "codingForeverSidebar": [{
-                "icon": "media/icon.svg",
-                "type": "webview",
-                "id": "codingForeverView",
-                "name": "AI Chat Workspace"
-            }]
+            "codingForeverSidebar": [
+                {
+                    "icon": "media/icon.svg",
+                    "type": "webview",
+                    "id": "codingForeverView",
+                    "name": "AI Chat Workspace"
+                }
+            ]
         },
-        "commands": [{
+        "commands": [
+            {
                 "command": "coding-forever.openChatTab",
                 "title": "Coding Forever: Chat Tab öffnen",
                 "icon": "$(comment-discussion)"
@@ -70,7 +75,8 @@
             }
         ],
         "menus": {
-            "view/title": [{
+            "view/title": [
+                {
                     "command": "coding-forever.openDashboard",
                     "when": "view == codingForeverView",
                     "group": "navigation@1"
@@ -133,6 +139,7 @@
     },
     "dependencies": {
         "@google/genai": "^2.18.0",
+        "groq-sdk": "^1.6.0",
         "lucide-react": "^1.38.0",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
