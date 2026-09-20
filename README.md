@@ -1,6 +1,6 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.4.0-orange.svg)
+![Version](https://img.shields.io/badge/version-2.6.1-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
