@@ -75,6 +75,14 @@ Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projects
 
 ## Changelog
 
+### 2.6.1
+* **Problem:**
+Agent-Toggle in der UI schickt zwar agentMode mit, aber das Backend liest es nie. handleAgent baut immer den vollen Agent-System-Prompt + alle 4 Tool-Definitionen, egal was man im UI einstellt. Bei openai/gpt-oss-20b mit nur 8000 TPM Free-Tier-Limit reißt das sofort das Limit – auf der Groq-Console selbst schickst man ja nur den nackten Prompt, ohne den ganzen Agent-Overhead.
+
+* **Handle Agent Problem gelöst:** handleAgent() bekommt jetzt einen echten agentMode-Parameter, msg.agentMode aus dem Frontend wird tatsächlich durchgereicht (vorher: totes Feld, nie gelesen).
+* **Agent AUS:** schlanker System-Prompt (ein Satz statt der ganzen Anleitung), keine Tools im Request (weder Groq noch Gemini) → massiv weniger Tokens.
+* **Agent AN:** alles wie gehabt, volle Agent-Logik + Tools.
+
 ### 2.6.0
 * **Groq Agentic Chat:** 
 

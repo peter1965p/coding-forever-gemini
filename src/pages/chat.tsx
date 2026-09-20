@@ -711,7 +711,7 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
               {groqModels.length > 0 ? (
                 groqModels.map((id) => (
                   <option key={id} value={`groq:${id}`}>
-                    {id}
+                    {id}{id.startsWith('groq/compound') ? ' (nur eingebaute Tools)' : ''}
                   </option>
                 ))
               ) : (

@@ -377,7 +377,7 @@ async function handleWebviewMessage(
             if ((!selectedModel || selectedModel.includes('gemini')) && groqApiKey) {
                 selectedModel = 'groq:llama-3.3-70b-versatile';
             }
-            await handleAgent(target, context, msg.prompt, selectedModel || 'gemini-3.6-flash', msg.bypass, msg.autoAccept);
+            await handleAgent(target, context, msg.prompt, selectedModel || 'gemini-3.6-flash', msg.bypass, msg.autoAccept, msg.agentMode !== false);
         } else if (msg.type === 'suggestNext') {
             await handleSuggestNext(target, context);
         } else if (msg.type === 'applyCodeToEditor') {
@@ -808,7 +808,8 @@ async function handleAgent(
     prompt: string,
     model: string,
     bypass: boolean,
-    autoAccept: boolean
+    autoAccept: boolean,
+    agentMode: boolean = true
 ) {
     const isLocal = context.globalState.get<boolean>('localEnabled') || false;
     const groqApiKey = context.globalState.get<string>('groqApiKey');
@@ -817,7 +818,10 @@ async function handleAgent(
     const editor = vscode.window.activeTextEditor;
     const activeFileName = editor ? vscode.workspace.asRelativePath(editor.document.uri) : 'keine';
 
-    const systemInstruction = `Du bist "Coding Forever", ein autonomer Fullstack-Entwickler-Agent direkt in VS Code.
+    // Bei ausgeschaltetem Agent-Modus: knapper Prompt, keine Tools, kein Datei-/Terminal-Zugriff.
+    // Spart massiv Tokens (wichtig bei knappen TPM-Limits wie z.B. bei gpt-oss-20b auf Groq Free-Tier).
+    const systemInstruction = agentMode
+        ? `Du bist "Coding Forever", ein autonomer Fullstack-Entwickler-Agent direkt in VS Code.
 Arbeite iterativ und diszipliniert:
 1. Verschaff dir zuerst Überblick (list_files, ggf. read_file für relevante Dateien) bevor du etwas änderst.
 2. Ändere NUR was für die Aufgabe nötig ist. Erfinde keine Dateien/APIs, die du nicht gesehen hast.
@@ -825,7 +829,8 @@ Arbeite iterativ und diszipliniert:
 4. Fasse am Ende kurz zusammen, was du getan hast.
 
 Aktive Datei im Editor: ${activeFileName}
-Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`;
+Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`
+        : `Du bist "Coding Forever", ein hilfreicher Coding-Assistent direkt in VS Code. Beantworte die Anfrage direkt im Chat, ohne Datei- oder Terminal-Zugriff.`;
 
     // ---------------------------------------------------------------------------
     // PFAD A: GROQ CLOUD ENGINE
@@ -839,6 +844,13 @@ Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`;
         const selectedGroqModel = model.replace('groq:', '') || 'llama-3.3-70b-versatile';
         target.webview.postMessage({ type: 'status', text: `⚡ Sende Anfrage an Groq LPU Cloud (${selectedGroqModel})...` });
 
+        // groq/compound & groq/compound-mini akzeptieren nur ihre eigenen server-seitigen
+        // Built-in-Tools (Websuche etc.), kein extern definiertes tools/tool_calls-Array.
+        let useLocalTools = agentMode && !selectedGroqModel.startsWith('groq/compound');
+        if (agentMode && !useLocalTools) {
+            target.webview.postMessage({ type: 'status', text: `ℹ️ ${selectedGroqModel} unterstützt nur eingebaute Groq-Tools, kein eigenes Function-Calling – läuft ohne Datei-/Terminal-Tools.` });
+        }
+
         // Agentic Loop, analog zu Pfad C (Gemini), aber im OpenAI-kompatiblen tools/tool_calls-Schema.
         const groqMessages: any[] = [
             { role: 'system', content: systemInstruction },
@@ -848,25 +860,51 @@ Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`;
 
         try {
             for (let turn = 0; turn < maxGroqTurns; turn++) {
-                const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                const requestBody: any = {
+                    model: selectedGroqModel,
+                    messages: groqMessages,
+                    temperature: 0.2
+                };
+                if (useLocalTools) {
+                    requestBody.tools = OPENAI_AGENT_TOOLS;
+                    requestBody.tool_choice = 'auto';
+                }
+
+                let res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${groqApiKey}`
                     },
-                    body: JSON.stringify({
-                        model: selectedGroqModel,
-                        messages: groqMessages,
-                        tools: OPENAI_AGENT_TOOLS,
-                        tool_choice: 'auto',
-                        temperature: 0.2
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 if (!res.ok) {
-                    const errData: any = await res.json();
-                    target.webview.postMessage({ type: 'response', text: `Groq Fehler: ${errData.error?.message || res.statusText}` });
-                    return;
+                    const errData: any = await res.json().catch(() => ({}));
+                    const errMsg: string = errData.error?.message || res.statusText;
+
+                    // Generischer Fallback: falls Groq für DIESES Modell (jetzt oder in Zukunft)
+                    // Tool-Calling ablehnt, einmalig ohne Tools erneut versuchen statt hart abzubrechen.
+                    if (useLocalTools && /tool/i.test(errMsg) && /(not support|not enabled|unsupported)/i.test(errMsg)) {
+                        target.webview.postMessage({ type: 'status', text: `ℹ️ ${selectedGroqModel} lehnt Tool-Calling ab – wiederhole ohne Tools...` });
+                        useLocalTools = false;
+                        delete requestBody.tools;
+                        delete requestBody.tool_choice;
+                        res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${groqApiKey}`
+                            },
+                            body: JSON.stringify(requestBody)
+                        });
+                    }
+
+                    if (!res.ok) {
+                        const retryErrData: any = await res.json().catch(() => ({}));
+                        target.webview.postMessage({ type: 'response', text: `Groq Fehler: ${retryErrData.error?.message || errMsg}` });
+                        return;
+                    }
                 }
 
                 const data: any = await res.json();
@@ -967,14 +1005,18 @@ Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`;
 
     try {
         for (let turn = 0; turn < maxTurns; turn++) {
+            const geminiBody: any = {
+                system_instruction: { parts: [{ text: systemInstruction }] },
+                contents
+            };
+            if (agentMode) {
+                geminiBody.tools = AGENT_TOOLS;
+            }
+
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    system_instruction: { parts: [{ text: systemInstruction }] },
-                    contents,
-                    tools: AGENT_TOOLS
-                })
+                body: JSON.stringify(geminiBody)
             });
 
             const data: any = await res.json();
