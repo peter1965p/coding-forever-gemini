@@ -4,10 +4,15 @@ import { vscode } from '../lib/vscodeApi';
 export interface SystemSpecs {
   cpuModel: string;
   cpuCores: number;
+  cpuSpeed: number;
   ramGB: number;
   hasGpu: boolean;
   gpuName: string;
   osInfo: string;
+  ramFreeGB: number;
+  ramUsedPercent: number;
+  cpuTempC: number | null;
+  cpuLoadPercent: number | null;
 }
 
 export interface RecommendedModel {
@@ -91,6 +96,9 @@ export const AiSettings: React.FC = () => {
   useEffect(() => {
     if (localEnabled) {
       fetchLocalModels(baseUrl);
+      // Bisher toter Code: SYSTEM_SPECS_SCANNED wurde empfangen, aber SCAN_SYSTEM nie gesendet.
+      // Deshalb blieben specs/recommendedModels immer leer.
+      vscode.postMessage({ type: 'SCAN_SYSTEM' });
     }
   }, [localEnabled, baseUrl]);
 
@@ -287,41 +295,45 @@ export const AiSettings: React.FC = () => {
                   </div>
                 </>
               ) : (
-                /* NEU: EMPFEHLUNGSPANEL WENN DYNAMISCHER SCAN 0 MODELLE LIEFERT */
-                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '6px', border: '1px dashed var(--vscode-input-border)', marginTop: '6px' }}>
-                  <div style={{ fontSize: '0.85em', color: '#eab308', fontWeight: 'bold', marginBottom: '6px' }}>
-                    ⚠️ Keine Ollama-Modelle gefunden!
-                  </div>
-
-                  {specs && (
-                    <div style={{ fontSize: '0.78em', color: 'var(--vscode-descriptionForeground)', marginBottom: '10px', lineHeight: '1.3' }}>
-                      <strong>Gescannte Hardware:</strong> {specs.cpuModel} ({specs.cpuCores} Kerne) | {specs.ramGB} GB RAM | GPU: <i>{specs.gpuName}</i>
-                    </div>
-                  )}
-
-                  {recommendedModels.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
-                      {recommendedModels.map((m) => (
-                        <div key={m.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--vscode-input-background)', padding: '8px 10px', borderRadius: '4px', border: '1px solid var(--vscode-panel-border)' }}>
-                          <div>
-                            <div style={{ fontSize: '0.85em', fontWeight: 'bold' }}>
-                              {m.name} <span style={{ fontSize: '0.7em', padding: '1px 5px', background: PRIMARY, color: '#fff', borderRadius: '3px', marginLeft: '6px' }}>{m.tag}</span>
-                            </div>
-                            <div style={{ fontSize: '0.75em', color: 'var(--vscode-descriptionForeground)' }}>{m.desc}</div>
-                          </div>
-                          <button
-                            onClick={() => installModel(m.name)}
-                            style={{ padding: '4px 8px', background: ACCENT, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8em', fontWeight: 'bold', whiteSpace: 'nowrap', marginLeft: '8px' }}
-                          >
-                            📥 Installieren
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div style={{ fontSize: '0.85em', color: '#eab308', fontWeight: 'bold', marginTop: '6px' }}>
+                  ⚠️ Keine Ollama-Modelle gefunden!
                 </div>
               )}
             </div>
+
+            {/* Hardware-Scan + Modell-Empfehlung: läuft immer, egal ob Ollama schon Modelle hat */}
+            {specs && (
+              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '6px', border: '1px dashed var(--vscode-input-border)', marginTop: '12px' }}>
+                <div style={{ fontSize: '0.78em', color: 'var(--vscode-descriptionForeground)', marginBottom: recommendedModels.length > 0 ? '10px' : '0', lineHeight: '1.4' }}>
+                  <strong>Gescannte Hardware:</strong> {specs.cpuModel} ({specs.cpuCores} Kerne{specs.cpuSpeed ? `, ${specs.cpuSpeed.toFixed(1)} GHz` : ''})
+                  {' | '}{specs.ramUsedPercent}% von {specs.ramGB} GB RAM belegt
+                  {specs.cpuTempC !== null ? ` | ${specs.cpuTempC}°C` : ''}
+                  {' | GPU: '}<i>{specs.gpuName}</i>
+                </div>
+
+                {recommendedModels.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                    <div style={{ fontSize: '0.78em', fontWeight: 'bold', color: PRIMARY }}>💡 Für deine Hardware empfohlen:</div>
+                    {recommendedModels.map((m) => (
+                      <div key={m.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--vscode-input-background)', padding: '8px 10px', borderRadius: '4px', border: '1px solid var(--vscode-panel-border)' }}>
+                        <div>
+                          <div style={{ fontSize: '0.85em', fontWeight: 'bold' }}>
+                            {m.name} <span style={{ fontSize: '0.7em', padding: '1px 5px', background: PRIMARY, color: '#fff', borderRadius: '3px', marginLeft: '6px' }}>{m.tag}</span>
+                          </div>
+                          <div style={{ fontSize: '0.75em', color: 'var(--vscode-descriptionForeground)' }}>{m.desc}</div>
+                        </div>
+                        <button
+                          onClick={() => installModel(m.name)}
+                          style={{ padding: '4px 8px', background: ACCENT, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8em', fontWeight: 'bold', whiteSpace: 'nowrap', marginLeft: '8px' }}
+                        >
+                          📥 Installieren
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

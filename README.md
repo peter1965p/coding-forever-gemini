@@ -1,6 +1,6 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.6.1-orange.svg)
+![Version](https://img.shields.io/badge/version-2.7.0-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -74,6 +74,15 @@ Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projects
 ---
 
 ## Changelog
+
+### 2.7.0
+* **AiSettings:** beim Umschalten auf "Lokale Modelle" wird jetzt tatsächlich SCAN_SYSTEM gesendet. Zeigt jetzt immer (nicht nur wenn 0 Ollama-Modelle gefunden werden) die gescannte Hardware + passende Empfehlungen mit Install-Button.
+
+* **Dashboard:** neue "System-Monitor"-Sektion mit echten grafischen Balken für CPU-Load, RAM-Auslastung (%, GB frei), CPU-Temperatur (farbcodiert grün/orange/rot) und GPU-Name. Läuft mit einmaligem vollem Scan beim Öffnen + Live-Polling alle 4s über einen neuen, leichten SCAN_LIVE_STATS-Handler (kein wiederholtes lspci, nur RAM/Temp/Load).
+CPU-Temperatur ist ehrlich gesagt nur auf Linux zuverlässig auslesbar (sysfs thermal-zones) – auf Windows/macOS zeigt's sauber "nicht auslesbar" statt einen falschen Wert zu erfinden. cpuLoadPercent genauso: auf Windows liefert os.loadavg() grundsätzlich Unsinn (immer [0,0,0]), da zeigt's ebenfalls ehrlich "nicht messbar" statt einer Fake-Zahl.
+
+* **Scan System Bug:**
+Wurde im Backend behoben.
 
 ### 2.6.1
 * **Problem:**

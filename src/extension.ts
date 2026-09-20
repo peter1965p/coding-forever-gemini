@@ -14,10 +14,22 @@ export interface SystemSpecs {
     cpuModel: string;
     cpuCores: number;
     cpuSpeed: number; // in GHz
-    ramGB: number;
+    ramGB: number; // Gesamt-RAM (Rückwärtskompatibilität)
     hasGpu: boolean;
     gpuName: string;
     osInfo: string;
+    ramFreeGB: number;
+    ramUsedPercent: number;
+    cpuTempC: number | null; // null = auf dieser Plattform nicht auslesbar
+    cpuLoadPercent: number | null; // null = auf dieser Plattform nicht zuverlässig auslesbar (z.B. Windows)
+}
+
+export interface LiveStats {
+    ramGB: number;
+    ramFreeGB: number;
+    ramUsedPercent: number;
+    cpuTempC: number | null;
+    cpuLoadPercent: number | null;
 }
 
 export interface RecommendedModel {
@@ -29,11 +41,75 @@ export interface RecommendedModel {
 // ---------------------------------------------------------------------------
 // 1. HARDWARE SCANNER & DYNAMISCHE EMPFEHLUNGEN
 // ---------------------------------------------------------------------------
+
+function getRamStats(): { ramGB: number; ramFreeGB: number; ramUsedPercent: number } {
+    const totalBytes = os.totalmem();
+    const freeBytes = os.freemem();
+    const ramGB = Math.round(totalBytes / (1024 ** 3));
+    const ramFreeGB = Math.round((freeBytes / (1024 ** 3)) * 10) / 10;
+    const ramUsedPercent = Math.round(((totalBytes - freeBytes) / totalBytes) * 100);
+    return { ramGB, ramFreeGB, ramUsedPercent };
+}
+
+// Best-effort CPU-Temperatur. Nur Linux hat dafür einen simplen, dependency-freien Weg
+// (Thermal-Zones im sysfs); Windows/macOS bräuchten Zusatz-Tools, daher dort null.
+async function getCpuTempC(): Promise<number | null> {
+    if (process.platform !== 'linux') { return null; }
+    try {
+        const thermalRoot = '/sys/class/thermal';
+        if (!fs.existsSync(thermalRoot)) { return null; }
+
+        const zones = fs.readdirSync(thermalRoot).filter(z => z.startsWith('thermal_zone'));
+        for (const zone of zones) {
+            const typePath = path.join(thermalRoot, zone, 'type');
+            const tempPath = path.join(thermalRoot, zone, 'temp');
+            if (!fs.existsSync(tempPath)) { continue; }
+
+            const type = fs.existsSync(typePath) ? fs.readFileSync(typePath, 'utf8').trim().toLowerCase() : '';
+            // Bevorzugt eine Zone, die erkennbar die CPU/Package ist; sonst erste verfügbare als Fallback.
+            const isCpuZone = type.includes('x86_pkg') || type.includes('cpu') || type.includes('core');
+
+            const raw = parseInt(fs.readFileSync(tempPath, 'utf8').trim(), 10);
+            if (isNaN(raw)) { continue; }
+            const celsius = Math.round(raw / 1000);
+
+            if (isCpuZone) { return celsius; }
+        }
+
+        // Kein eindeutig benanntes CPU-Zone gefunden: erste Zone als Näherungswert nehmen.
+        if (zones.length > 0) {
+            const fallbackPath = path.join(thermalRoot, zones[0], 'temp');
+            if (fs.existsSync(fallbackPath)) {
+                const raw = parseInt(fs.readFileSync(fallbackPath, 'utf8').trim(), 10);
+                if (!isNaN(raw)) { return Math.round(raw / 1000); }
+            }
+        }
+    } catch (error) {
+        console.error('Fehler beim Auslesen der CPU-Temperatur:', error);
+    }
+    return null;
+}
+
+// os.loadavg() liefert auf Windows immer [0,0,0] – dort also lieber null statt Falschangabe.
+function getCpuLoadPercent(cores: number): number | null {
+    if (process.platform === 'win32') { return null; }
+    const load1 = os.loadavg()[0];
+    if (!cores) { return null; }
+    return Math.min(100, Math.round((load1 / cores) * 100));
+}
+
+async function getLiveStats(): Promise<LiveStats> {
+    const { ramGB, ramFreeGB, ramUsedPercent } = getRamStats();
+    const cpuTempC = await getCpuTempC();
+    const cpuLoadPercent = getCpuLoadPercent(os.cpus().length);
+    return { ramGB, ramFreeGB, ramUsedPercent, cpuTempC, cpuLoadPercent };
+}
+
 async function getSystemSpecs(): Promise<SystemSpecs> {
     const cpuCores = os.cpus().length;
     const cpuModel = os.cpus()[0]?.model || 'Es wurde eine unbekannte CPU erkannt';
-    const ramGB = Math.round(os.totalmem() / (1024 ** 3));
     const cpuSpeed = os.cpus()[0]?.speed ? os.cpus()[0].speed / 1000 : 0; // in GHz
+    const { ramGB, ramFreeGB, ramUsedPercent } = getRamStats();
 
     let gpuName = 'Integrierte GPU, keine dedizierte GPU erkannt';
     let hasGpu = false;
@@ -50,6 +126,10 @@ async function getSystemSpecs(): Promise<SystemSpecs> {
             console.error('Fehler beim Auslesen der GPU-Informationen:', error);
         }
     }
+
+    const [cpuTempC] = await Promise.all([getCpuTempC()]);
+    const cpuLoadPercent = getCpuLoadPercent(cpuCores);
+
     return {
         cpuModel,
         cpuCores,
@@ -57,7 +137,11 @@ async function getSystemSpecs(): Promise<SystemSpecs> {
         ramGB,
         hasGpu,
         gpuName,
-        osInfo: `${os.type()} ${os.release()}${os.arch()}`
+        osInfo: `${os.type()} ${os.release()}${os.arch()}`,
+        ramFreeGB,
+        ramUsedPercent,
+        cpuTempC,
+        cpuLoadPercent
     };
 }
 
@@ -438,6 +522,13 @@ async function handleWebviewMessage(
                 specs,
                 recommended
             });
+        } else if (msg.type === 'SCAN_LIVE_STATS') {
+            // Schlanker als SCAN_SYSTEM: kein lspci-Aufruf, nur RAM/Temperatur/Load – geeignet fürs Polling.
+            const liveStats = await getLiveStats();
+            target.webview.postMessage({
+                type: 'LIVE_STATS_SCANNED',
+                stats: liveStats
+            });
         } else if (msg.type === 'checkUpdates') {
             checkForGitHubUpdates(context, true);
         } else if (msg.type === 'saveSettings') {
@@ -652,8 +743,21 @@ async function listWorkspaceFiles(): Promise<string> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders) { return 'Kein Workspace geöffnet.'; }
 
-    const files = await vscode.workspace.findFiles('**/*', '**/node_modules/**');
-    return files.map(f => vscode.workspace.asRelativePath(f)).join('\n');
+    // Build-Artefakte, Abhängigkeiten und Binär-/Release-Müll rausfiltern – die blähen
+    // list_files sonst unnötig auf und sprengen bei kleinen Modellen die Token-Limits.
+    const excludePattern = '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**,**/coverage/**,**/.vscode-test/**,**/media/**,**/releases/**,**/*.vsix,**/*.vsix.map,**/package-lock.json}';
+    const files = await vscode.workspace.findFiles('**/*', excludePattern);
+    const relativePaths = files.map(f => vscode.workspace.asRelativePath(f));
+
+    // Auch bei gefilterten Projekten hart deckeln, damit ein einzelner list_files-Call
+    // nicht allein schon ein kleines Modell-Kontingent sprengt.
+    const MAX_FILES = 300;
+    if (relativePaths.length > MAX_FILES) {
+        const shown = relativePaths.slice(0, MAX_FILES);
+        return `${shown.join('\n')}\n\n... und ${relativePaths.length - MAX_FILES} weitere Dateien (gekürzt). Nutze read_file gezielt auf Unterordner/Dateien statt alles auf einmal zu scannen.`;
+    }
+
+    return relativePaths.join('\n');
 }
 
 const AGENT_TOOLS = [{

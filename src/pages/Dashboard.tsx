@@ -7,11 +7,57 @@ declare function acquireVsCodeApi(): {
   setState: (state: any) => void;
 };
 
+interface SystemSpecs {
+  cpuModel: string;
+  cpuCores: number;
+  cpuSpeed: number;
+  ramGB: number;
+  hasGpu: boolean;
+  gpuName: string;
+  osInfo: string;
+  ramFreeGB: number;
+  ramUsedPercent: number;
+  cpuTempC: number | null;
+  cpuLoadPercent: number | null;
+}
+
+interface LiveStats {
+  ramGB: number;
+  ramFreeGB: number;
+  ramUsedPercent: number;
+  cpuTempC: number | null;
+  cpuLoadPercent: number | null;
+}
+
+function barColor(percent: number): string {
+  if (percent >= 85) { return '#ef4444'; }
+  if (percent >= 65) { return '#f59e0b'; }
+  return '#10b981';
+}
+
+function tempColor(celsius: number): string {
+  if (celsius >= 85) { return '#ef4444'; }
+  if (celsius >= 70) { return '#f59e0b'; }
+  return '#10b981';
+}
+
+const ProgressBar: React.FC<{ percent: number; color: string }> = ({ percent, color }) => (
+  <div style={{ background: '#1f2937', borderRadius: '4px', height: '8px', width: '100%', overflow: 'hidden' }}>
+    <div style={{
+      width: `${Math.max(0, Math.min(100, percent))}%`,
+      height: '100%',
+      background: color,
+      transition: 'width 0.6s ease, background 0.6s ease'
+    }} />
+  </div>
+);
+
 export const Dashboard: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash-lite');
   const [promptText, setPromptText] = useState('');
   const [responseText, setResponseText] = useState('Bereit für Anfragen...');
   const [extVersion, setExtVersion] = useState('2.4.0');
+  const [specs, setSpecs] = useState<SystemSpecs | null>(null);
 
   useEffect(() => {
     // Version aus window global vars auslesen
@@ -23,11 +69,28 @@ export const Dashboard: React.FC = () => {
       const message = event.data;
       if (message.type === 'response') {
         setResponseText(message.text);
+      } else if (message.type === 'SYSTEM_SPECS_SCANNED') {
+        setSpecs(message.specs);
+      } else if (message.type === 'LIVE_STATS_SCANNED') {
+        const s: LiveStats = message.stats;
+        setSpecs((prev) => (prev ? { ...prev, ...s } : prev));
       }
     };
 
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+
+    // Einmaliger voller Scan (CPU/GPU/OS) beim Öffnen des Dashboards
+    vscode.postMessage({ type: 'SCAN_SYSTEM' });
+
+    // Danach nur noch die leichten Live-Werte (RAM/Temperatur/Load) alle 4s nachziehen
+    const liveInterval = setInterval(() => {
+      vscode.postMessage({ type: 'SCAN_LIVE_STATS' });
+    }, 4000);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearInterval(liveInterval);
+    };
   }, []);
 
   const handleSend = () => {
@@ -113,6 +176,56 @@ export const Dashboard: React.FC = () => {
           <span style={{ fontSize: '10px' }}>🟢 Online</span>
           <span style={{ fontSize: '10px', color: '#9ca3af' }}>v{extVersion}</span>
         </div>
+      </div>
+
+      {/* System-Monitor: Live Hardware-Auslastung */}
+      <div style={{ backgroundColor: '#111827', border: '1px solid #1f2937', borderRadius: '8px', padding: '20px', marginBottom: '24px', boxSizing: 'border-box' }}>
+        <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          System-Monitor
+          <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'normal' }}>{specs ? specs.osInfo : 'Scanne...'}</span>
+        </div>
+
+        {specs ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                CPU — {specs.cpuModel} ({specs.cpuCores} Kerne{specs.cpuSpeed ? `, ${specs.cpuSpeed.toFixed(1)} GHz` : ''})
+              </div>
+              {specs.cpuLoadPercent !== null ? (
+                <>
+                  <ProgressBar percent={specs.cpuLoadPercent} color={barColor(specs.cpuLoadPercent)} />
+                  <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>{specs.cpuLoadPercent}% Auslastung</div>
+                </>
+              ) : (
+                <div style={{ fontSize: '11px', color: '#6b7280' }}>Auslastung auf dieser Plattform nicht messbar</div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                RAM — {specs.ramGB} GB gesamt
+              </div>
+              <ProgressBar percent={specs.ramUsedPercent} color={barColor(specs.ramUsedPercent)} />
+              <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>{specs.ramUsedPercent}% belegt · {specs.ramFreeGB} GB frei</div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CPU-Temperatur</div>
+              {specs.cpuTempC !== null ? (
+                <div style={{ fontSize: '22px', fontWeight: 'bold', color: tempColor(specs.cpuTempC) }}>{specs.cpuTempC}°C</div>
+              ) : (
+                <div style={{ fontSize: '11px', color: '#6b7280' }}>Auf dieser Plattform nicht auslesbar</div>
+              )}
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>GPU</div>
+              <div style={{ fontSize: '12px', color: specs.hasGpu ? '#10b981' : '#9ca3af' }}>{specs.gpuName}</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: '12px', color: '#9ca3af' }}>Scanne Hardware...</div>
+        )}
       </div>
 
       {/* 4 Status-Karten */}
