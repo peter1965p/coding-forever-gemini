@@ -75,6 +75,12 @@ Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projects
 
 ## Changelog
 
+### 2.7.2
+* **Local Model Mode (ohne Agenten Mode)**
+* Ohne Agent-Modus bekommt er jetzt Name und Inhalt der gerade offenen Datei direkt in den System-Prompt (gekappt bei 4000 Zeichen, damit's nicht wieder Richtung TPM-Limit ausartet) – plus die klare Ansage, nie nach einem Pfad zu fragen, sondern bei projektweiten Anfragen kurz zu sagen "dafür brauchst du Agent-Modus" statt rumzueiern.
+
+* Für "scanne das ganze Projekt" bleibt's ohne Agent trotzdem ehrlich limitiert – er sieht ja wirklich nur die eine Datei, kann nicht zaubern. Aber für "was macht diese Funktion hier" oder ähnliche Fragen zur offenen Datei sollte er jetzt direkt antworten, ohne erst nach Grunddaten zu fragen, die er längst hätte wissen können.
+
 ### 2.7.1
 * **LM Bug** Lokale Modelle wurden nicht erkannt. Deswegen musste ich die 2.7-1 nachziehen! Der Bug ist jetzt behoben.
 

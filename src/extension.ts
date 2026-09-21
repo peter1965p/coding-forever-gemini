@@ -921,6 +921,18 @@ async function handleAgent(
     const editor = vscode.window.activeTextEditor;
     const activeFileName = editor ? vscode.workspace.asRelativePath(editor.document.uri) : 'keine';
 
+    // Ohne Agent-Modus hat das Modell keine Tools, um selbst nachzufragen/nachzusehen —
+    // ohne diesen Kontext fängt es an, nach Pfaden zu fragen oder Dinge zu erfinden.
+    // Deshalb den Inhalt der aktuell offenen Datei direkt mitgeben (gekürzt, spart Tokens).
+    const MAX_ACTIVE_FILE_CHARS = 4000;
+    let activeFileContent = '';
+    if (editor) {
+        const rawContent = editor.document.getText();
+        activeFileContent = rawContent.length > MAX_ACTIVE_FILE_CHARS
+            ? `${rawContent.slice(0, MAX_ACTIVE_FILE_CHARS)}\n... (gekürzt, Datei ist länger)`
+            : rawContent;
+    }
+
     // Bei ausgeschaltetem Agent-Modus: knapper Prompt, keine Tools, kein Datei-/Terminal-Zugriff.
     // Spart massiv Tokens (wichtig bei knappen TPM-Limits wie z.B. bei gpt-oss-20b auf Groq Free-Tier).
     const systemInstruction = agentMode
@@ -933,7 +945,11 @@ Arbeite iterativ und diszipliniert:
 
 Aktive Datei im Editor: ${activeFileName}
 Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`
-        : `Du bist "Coding Forever", ein hilfreicher Coding-Assistent direkt in VS Code. Beantworte die Anfrage direkt im Chat, ohne Datei- oder Terminal-Zugriff.`;
+        : `Du bist "Coding Forever", ein hilfreicher Coding-Assistent direkt in VS Code. Du hast in diesem Modus KEINEN Datei- oder Terminal-Zugriff und kannst nicht selbst nachsehen oder nachfragen — antworte direkt mit dem, was du unten siehst.
+Frag NIEMALS nach einem Dateipfad oder Projektverzeichnis. Wenn eine Anfrage mehr braucht als die untenstehende Datei (z.B. "scanne das ganze Projekt"), sag kurz und direkt, dass dafür der Agent-Modus eingeschaltet werden muss, statt Rückfragen zu stellen.
+
+Aktive Datei im Editor: ${activeFileName}
+${activeFileContent ? `Inhalt:\n\`\`\`\n${activeFileContent}\n\`\`\`` : '(keine Datei geöffnet)'}`;
 
     // ---------------------------------------------------------------------------
     // PFAD A: GROQ CLOUD ENGINE
