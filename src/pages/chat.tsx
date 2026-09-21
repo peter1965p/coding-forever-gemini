@@ -140,11 +140,32 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
   const [groqKeySet, setGroqKeySet] = useState<boolean>(
     Boolean((window as any).INITIAL_AI_SETTINGS?.groqApiKey)
   );
+  const [localModels, setLocalModels] = useState<string[]>([]);
+  const [localEnabled, setLocalEnabled] = useState<boolean>(
+    Boolean((window as any).INITIAL_AI_SETTINGS?.localEnabled)
+  );
+  const [localBaseUrl, setLocalBaseUrl] = useState<string>(
+    (window as any).INITIAL_AI_SETTINGS?.baseUrl || 'http://localhost:11434'
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const postToVsCode = (payload: any) => {
     vscode.postMessage(payload);
+  };
+
+  // Direkter Client-Fetch gegen Ollama (CSP erlaubt http://localhost:* explizit) —
+  // gleicher Ansatz wie in AiSettings.tsx, kein Umweg über die Extension nötig.
+  const fetchLocalModels = async (baseUrl: string) => {
+    try {
+      const cleanUrl = baseUrl.replace(/\/v1\/?$/, '');
+      const res = await fetch(`${cleanUrl}/api/tags`);
+      const data = await res.json();
+      const names: string[] = (data?.models || []).map((m: any) => m.name);
+      setLocalModels(names);
+    } catch {
+      setLocalModels([]);
+    }
   };
 
   // Auto-scroll zu neuesten Nachrichten
@@ -165,6 +186,11 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
 
     // Verfügbare Groq-Modelle live laden (falls ein Key hinterlegt ist)
     postToVsCode({ type: 'getGroqModels' });
+
+    // Verfügbare lokale Ollama-Modelle laden (falls "Lokale Modelle" aktiv ist)
+    if (localEnabled) {
+      fetchLocalModels(localBaseUrl);
+    }
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
@@ -213,6 +239,16 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
           postToVsCode({ type: 'getGroqModels' });
         } else {
           setGroqModels([]);
+        }
+
+        const nowLocalEnabled = Boolean(message.settings?.localEnabled);
+        const nowBaseUrl = message.settings?.baseUrl || 'http://localhost:11434';
+        setLocalEnabled(nowLocalEnabled);
+        setLocalBaseUrl(nowBaseUrl);
+        if (nowLocalEnabled) {
+          fetchLocalModels(nowBaseUrl);
+        } else {
+          setLocalModels([]);
         }
       }
     };
@@ -717,6 +753,20 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
               ) : (
                 <option value="" disabled>
                   {groqKeySet ? 'Lade Groq-Modelle...' : 'Key unter AI Engine hinterlegen'}
+                </option>
+              )}
+            </optgroup>
+
+            <optgroup label={localEnabled ? '🖥️ Lokal (Ollama)' : '🖥️ Lokal (deaktiviert)'}>
+              {localModels.length > 0 ? (
+                localModels.map((id) => (
+                  <option key={id} value={`local:${id}`}>
+                    {id}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled>
+                  {localEnabled ? 'Keine lokalen Modelle gefunden' : 'Unter AI Engine aktivieren'}
                 </option>
               )}
             </optgroup>

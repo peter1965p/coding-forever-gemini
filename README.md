@@ -1,6 +1,6 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.7.0-orange.svg)
+![Version](https://img.shields.io/badge/version-2.7.1-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -74,6 +74,9 @@ Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projects
 ---
 
 ## Changelog
+
+### 2.7.1
+* **LM Bug** Lokale Modelle wurden nicht erkannt. Deswegen musste ich die 2.7-1 nachziehen! Der Bug ist jetzt behoben.
 
 ### 2.7.0
 * **AiSettings:** beim Umschalten auf "Lokale Modelle" wird jetzt tatsächlich SCAN_SYSTEM gesendet. Zeigt jetzt immer (nicht nur wenn 0 Ollama-Modelle gefunden werden) die gescannte Hardware + passende Empfehlungen mit Install-Button.

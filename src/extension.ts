@@ -915,7 +915,6 @@ async function handleAgent(
     autoAccept: boolean,
     agentMode: boolean = true
 ) {
-    const isLocal = context.globalState.get<boolean>('localEnabled') || false;
     const groqApiKey = context.globalState.get<string>('groqApiKey');
     const geminiApiKey = context.globalState.get<string>('geminiApiKey');
 
@@ -1061,31 +1060,88 @@ Modus: Bypass=${bypass}, AutoAccept=${autoAccept}`
     // ---------------------------------------------------------------------------
     // PFAD B: LOKALE OLLAMA ENGINE
     // ---------------------------------------------------------------------------
-    if (isLocal) {
+    // Vorher: fixiert auf den globalen "Lokale Modelle"-Schalter, ignorierte die
+    // tatsächliche Dropdown-Auswahl komplett (jede Nicht-Groq-Anfrage landete bei
+    // Ollama, sobald der Schalter an war). Jetzt wie bei Groq: explizit über das
+    // model-Präfix ausgewählt, plus echtes Tool-Calling über Ollamas /api/chat.
+    if (model.startsWith('local:')) {
         const baseUrl = context.globalState.get<string>('baseUrl') || 'http://localhost:11434';
-        const localModel = context.globalState.get<string>('modelName') || 'llama3.2';
+        const localModel = model.replace('local:', '') || context.globalState.get<string>('modelName') || 'llama3.2';
+        const cleanUrl = baseUrl.replace(/\/v1\/?$/, '');
         target.webview.postMessage({ type: 'status', text: `🖥️ Sende Anfrage an Ollama (${localModel})...` });
 
-        try {
-            const cleanUrl = baseUrl.replace(/\/v1\/?$/, '');
-            const res = await fetch(`${cleanUrl}/api/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: localModel,
-                    prompt: `${systemInstruction}\n\nUser Prompt:\n${prompt}`,
-                    stream: false
-                })
-            });
+        const localMessages: any[] = [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: prompt }
+        ];
+        const maxLocalTurns = 10;
 
-            if (!res.ok) {
-                target.webview.postMessage({ type: 'response', text: `Ollama Fehler: ${res.statusText}` });
-                return;
+        try {
+            for (let turn = 0; turn < maxLocalTurns; turn++) {
+                const requestBody: any = {
+                    model: localModel,
+                    messages: localMessages,
+                    stream: false
+                };
+                // Nicht jedes lokale Modell unterstützt Tool-Calling; nicht-unterstützende
+                // Modelle ignorieren "tools" bei Ollama einfach und antworten normal in Text.
+                if (agentMode) {
+                    requestBody.tools = OPENAI_AGENT_TOOLS;
+                }
+
+                const res = await fetch(`${cleanUrl}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!res.ok) {
+                    target.webview.postMessage({ type: 'response', text: `Ollama Fehler: ${res.statusText}` });
+                    return;
+                }
+
+                const data: any = await res.json();
+                const message = data.message;
+
+                if (!message) {
+                    target.webview.postMessage({ type: 'response', text: 'Keine Antwort von Ollama erhalten.' });
+                    return;
+                }
+
+                const toolCalls: any[] = message.tool_calls || [];
+
+                if (toolCalls.length === 0) {
+                    target.webview.postMessage({ type: 'response', text: message.content || 'Keine Antwort von Ollama erhalten.' });
+                    return;
+                }
+
+                localMessages.push(message);
+
+                for (const call of toolCalls) {
+                    const toolName = call.function?.name;
+                    // Ollama liefert Function-Argumente meist schon als Objekt, Groq/OpenAI als JSON-String – beides abfangen.
+                    let toolArgs: any = {};
+                    try {
+                        toolArgs = typeof call.function?.arguments === 'string'
+                            ? JSON.parse(call.function.arguments || '{}')
+                            : (call.function?.arguments || {});
+                    } catch {
+                        toolArgs = {};
+                    }
+
+                    target.webview.postMessage({ type: 'status', text: toolStatusLabel(toolName, toolArgs) });
+                    const result = await executeTool(toolName, toolArgs, autoAccept);
+
+                    localMessages.push({
+                        role: 'tool',
+                        content: JSON.stringify(result)
+                    });
+                }
             }
 
-            const data: any = await res.json();
-            target.webview.postMessage({ type: 'response', text: data.response || 'Keine Antwort von Ollama erhalten.' });
+            target.webview.postMessage({ type: 'response', text: '⚠️ Maximale Anzahl an Schritten (10) erreicht, ohne abzuschließen.' });
             return;
+
         } catch (e: any) {
             target.webview.postMessage({ type: 'response', text: `Verbindungsfehler zu Ollama (${baseUrl}): ${e.message}` });
             return;
