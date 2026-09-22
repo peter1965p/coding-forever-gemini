@@ -1,6 +1,6 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.7.1-orange.svg)
+![Version](https://img.shields.io/badge/version-2.8.0-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -74,6 +74,13 @@ Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projects
 ---
 
 ## Changelog
+
+
+### 2.8.0 
+* react-syntax-highlighter mit Prism-Engine + vscDarkPlus-Theme (das gleiche Farbschema, das VS Code selbst für dunkle Themes nutzt) eingebaut
+Registrierte Sprachen: TSX, TypeScript, JSX, JavaScript, Python, JSON, Bash, SQL, CSS, HTML, YAML – Keywords, Strings, JSX-Tags, Props etc.jetzt alle farblich unterschieden
+* Kleiner Nebeneffekt: Bundle wächst von ~241KB auf ~910KB (Prism-Grammatiken + Theme-Daten) – für eine lokale VS-Code-Extension völlig unkritisch, lädt trotzdem sofort
+* Einige Bugs wurden auch Bereinigt
 
 ### 2.7.2
 * **Local Model Mode (ohne Agenten Mode)**

@@ -275,10 +275,10 @@ export const AiSettings: React.FC = () => {
                 />
                 <button
                   onClick={() => fetchLocalModels(baseUrl)}
-                  style={{ padding: '0 10px', background: 'var(--vscode-button-secondaryBackground)', color: 'var(--vscode-button-secondaryForeground)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85em' }}
+                  style={{ padding: '0 10px', background: ACCENT, color: '#fff', fontSize: '0.8em', fontWeight: 'bold', border: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', borderRadius: '6px', cursor: 'pointer' }}
                   title="Modelle neu laden"
                 >
-                  {loadingModels ? '...' : '🔄 Scan'}
+                  {loadingModels ? '...' : 'Lokaler Scan'}
                 </button>
               </div>
             </div>
@@ -295,7 +295,7 @@ export const AiSettings: React.FC = () => {
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: '0.85em', color: '#eab308', fontWeight: 'bold', marginTop: '6px' }}>
+                <div style={{ fontSize: '0.85em', color: '#ea0808', fontWeight: 'bold', marginTop: '6px' }}>
                   ⚠️ Keine Ollama-Modelle gefunden!
                 </div>
               )}
@@ -324,7 +324,7 @@ export const AiSettings: React.FC = () => {
                         </div>
                         <button
                           onClick={() => installModel(m.name)}
-                          style={{ padding: '4px 8px', background: ACCENT, color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8em', fontWeight: 'bold', whiteSpace: 'nowrap', marginLeft: '8px' }}
+                          style={{ padding: '4px 8px', background: ACCENT, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8em', fontWeight: 'bold', whiteSpace: 'nowrap', marginLeft: '8px' }}
                         >
                           📥 Installieren
                         </button>

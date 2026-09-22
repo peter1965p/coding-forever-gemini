@@ -2,7 +2,7 @@
     "name": "coding-forever",
     "displayName": "Coding Forever",
     "description": "Direct Gemini Flash Integration without Limits",
-    "version": "2.7.2",
+    "version": "2.8.0",
     "publisher": "PeterPaeffgen",
     "author": {
         "name": "Peter Päffgen",
@@ -123,6 +123,7 @@
         "@types/node": "24.x",
         "@types/react": "^19.2.18",
         "@types/react-dom": "^19.2.5",
+        "@types/react-syntax-highlighter": "^15.5.13",
         "@types/sql.js": "^1.4.11",
         "@types/vscode": "^1.134.0",
         "@vscode/test-cli": "^0.0.15",
@@ -143,6 +144,7 @@
         "lucide-react": "^1.38.0",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
+        "react-syntax-highlighter": "^16.1.1",
         "sql.js": "^1.14.2"
     }
 }

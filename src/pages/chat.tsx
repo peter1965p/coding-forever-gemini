@@ -1,5 +1,41 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SquarePen, LayoutDashboard, Settings, History, Trash2 } from 'lucide-react';
+import { SquarePen, LayoutDashboard, Settings, History, Trash2, Copy, Download, Check } from 'lucide-react';
+import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
+import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
+import jsx from 'react-syntax-highlighter/dist/esm/languages/prism/jsx';
+import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
+import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
+import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
+import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
+import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql';
+import css from 'react-syntax-highlighter/dist/esm/languages/prism/css';
+import markup from 'react-syntax-highlighter/dist/esm/languages/prism/markup';
+import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml';
+
+SyntaxHighlighter.registerLanguage('tsx', tsx);
+SyntaxHighlighter.registerLanguage('typescript', typescript);
+SyntaxHighlighter.registerLanguage('jsx', jsx);
+SyntaxHighlighter.registerLanguage('javascript', javascript);
+SyntaxHighlighter.registerLanguage('python', python);
+SyntaxHighlighter.registerLanguage('json', json);
+SyntaxHighlighter.registerLanguage('bash', bash);
+SyntaxHighlighter.registerLanguage('sql', sql);
+SyntaxHighlighter.registerLanguage('css', css);
+SyntaxHighlighter.registerLanguage('html', markup);
+SyntaxHighlighter.registerLanguage('markup', markup);
+SyntaxHighlighter.registerLanguage('yaml', yaml);
+
+// Mappt lockere/alternative Sprachnamen (z.B. aus ```-Fences oder guessLanguage) auf registrierte Prism-Keys
+const LANG_ALIAS: Record<string, string> = {
+  ts: 'typescript', js: 'javascript', py: 'python', sh: 'bash', shell: 'bash',
+  yml: 'yaml', text: 'text', txt: 'text'
+};
+function resolvePrismLang(lang: string): string {
+  const key = lang.toLowerCase();
+  return LANG_ALIAS[key] || key;
+}
 import { vscode } from '../lib/vscodeApi';
 
 interface MessageItem {
@@ -35,10 +71,102 @@ interface ChatProps {
   onNewChat?: () => void;
 }
 
+const LANG_EXT_MAP: Record<string, string> = {
+  typescript: 'ts', ts: 'ts', tsx: 'tsx', javascript: 'js', js: 'js', jsx: 'jsx',
+  python: 'py', py: 'py', json: 'json', html: 'html', css: 'css',
+  bash: 'sh', sh: 'sh', shell: 'sh', sql: 'sql', yaml: 'yml', yml: 'yml', text: 'txt'
+};
+
+const iconBtnStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: '#8b949e',
+  cursor: 'pointer',
+  padding: '3px',
+  display: 'flex',
+  alignItems: 'center',
+  borderRadius: '4px'
+};
+
+/**
+ * Code-Block mit Sprach-Label + Copy/Download — wie bei Claude/Gemini,
+ * statt nackten <pre>-Text.
+ */
+const CodeBlock: React.FC<{ code: string; lang: string }> = ({ code, lang }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => { /* Clipboard-Zugriff kann im Webview-Kontext fehlschlagen — dann still ignorieren */ });
+  };
+
+  const handleDownload = () => {
+    const ext = LANG_EXT_MAP[lang.toLowerCase()] || 'txt';
+    const blob = new Blob([code], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `snippet.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '8px', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#0d1117', borderBottom: '1px solid #30363d' }}>
+        <span style={{ fontSize: '11px', color: '#8b949e', fontFamily: 'monospace' }}>{lang}</span>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button onClick={handleDownload} title="Herunterladen" style={iconBtnStyle}><Download size={12} /></button>
+          <button onClick={handleCopy} title="Kopieren" style={iconBtnStyle}>
+            {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+          </button>
+        </div>
+      </div>
+      <SyntaxHighlighter
+        language={resolvePrismLang(lang)}
+        style={vscDarkPlus}
+        customStyle={{ margin: 0, padding: '10px', fontSize: '11px', background: 'transparent', maxHeight: '400px', overflowX: 'auto' }}
+        codeTagProps={{ style: { fontFamily: 'monospace' } }}
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  );
+};
+
+// Erkennt, ob ein NICHT gefenceter Text (kein ```-Block) trotzdem Code ist —
+// z.B. wenn jemand rohen Code ohne Markdown-Fence in den Chat pastet.
+function looksLikeCode(text: string): boolean {
+  if (text.includes('```')) { return false; }
+  const lines = text.split('\n');
+  if (lines.length < 2) { return false; }
+  const codeIndicators = /(=>|;\s*$|^\s*(const|let|var|function|import|export|class|def |public |private |#include)\b|<\/?[a-zA-Z][^>]*>|^\s*[{}]\s*$)/;
+  const matchCount = lines.filter(l => codeIndicators.test(l)).length;
+  return matchCount >= Math.max(2, Math.floor(lines.length * 0.3));
+}
+
+function guessLanguage(text: string): string {
+  if (/<[a-zA-Z][\w-]*[\s/>]/.test(text) && /(style=\{\{|className=)/.test(text)) { return 'tsx'; }
+  if (/^\s*(import|export)\s/m.test(text) && /:\s*(string|number|boolean)/.test(text)) { return 'typescript'; }
+  if (/^\s*(import|export|const|let|function)\s/m.test(text)) { return 'javascript'; }
+  if (/^\s*def\s|^\s*class\s.*:\s*$/m.test(text)) { return 'python'; }
+  if (/^\s*(SELECT|INSERT|UPDATE|DELETE)\s/im.test(text)) { return 'sql'; }
+  if (/^\s*\{[\s\S]*\}\s*$/.test(text.trim())) { return 'json'; }
+  return 'text';
+}
+
 /**
  * Hilfsfunktion zur Formatierung strukturierter Ausgaben
  */
 const renderStructuredMessage = (text: string) => {
+  // Ungefenceter Code-Paste (kein ``` im Text, sieht aber nach Code aus) —
+  // ganze Nachricht als einen Block behandeln statt zeilenweise zu zerreißen.
+  if (looksLikeCode(text)) {
+    return <CodeBlock code={text.trim()} lang={guessLanguage(text)} />;
+  }
+
   // Markdown-ähnliche Syntax unterstützen
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
@@ -69,32 +197,14 @@ const renderStructuredMessage = (text: string) => {
     // Code-Blöcke
     else if (line.startsWith('```')) {
       let codeBlock = '';
-      let lang = line.replace(/^```/, '').trim() || 'text';
+      const lang = line.replace(/^```/, '').trim() || 'text';
       i++;
       while (i < lines.length && !lines[i].startsWith('```')) {
         codeBlock += lines[i] + '\n';
         i++;
       }
       elements.push(
-        <div
-          key={`code-${i}`}
-          style={{
-            background: '#1e293b',
-            border: '1px solid #334155',
-            borderRadius: '6px',
-            padding: '10px',
-            fontSize: '11px',
-            fontFamily: 'monospace',
-            overflowX: 'auto',
-            color: '#e2e8f0',
-            marginTop: '6px',
-            marginBottom: '6px',
-            maxHeight: '250px'
-          }}
-        >
-          <div style={{ fontSize: '9px', color: '#9ca3af', marginBottom: '4px' }}>{lang}</div>
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{codeBlock.trim()}</pre>
-        </div>
+        <CodeBlock key={`code-${i}`} code={codeBlock.trim()} lang={lang} />
       );
     }
     // Listen
@@ -616,7 +726,7 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
                 gap: '8px'
               }}
             >
-              {msg.sender === 'assistant' ? renderStructuredMessage(msg.text) : <div style={{ fontSize: '12px' }}>{msg.text}</div>}
+              {renderStructuredMessage(msg.text)}
 
               {msg.sender === 'assistant' && containsCode && (
                 <button
