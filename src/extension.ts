@@ -193,13 +193,13 @@ export interface GroqModelInfo {
 }
 
 // Fallback-Liste, falls der Live-Abruf fehlschlägt (kein Key, Netzwerkfehler, Rate-Limit).
+// Stand: nur noch aktuell aktive Groq-Modelle (llama-3.3-70b-versatile, llama-3.1-8b-instant
+// und qwen/qwen3-32b wurden von Groq zwischenzeitlich abgeschaltet, siehe console.groq.com/docs/deprecations).
 const GROQ_FALLBACK_MODELS: GroqModelInfo[] = [
-    { id: 'llama-3.3-70b-versatile' },
-    { id: 'llama-3.1-8b-instant' },
     { id: 'openai/gpt-oss-120b' },
     { id: 'openai/gpt-oss-20b' },
-    { id: 'moonshotai/kimi-k2-instruct' },
-    { id: 'qwen/qwen3-32b' }
+    { id: 'qwen/qwen3.6-27b' },
+    { id: 'groq/compound' }
 ];
 
 async function fetchGroqModels(groqApiKey: string): Promise<GroqModelInfo[]> {
@@ -455,13 +455,14 @@ async function handleWebviewMessage(
         }
         // End Session Management
         else if (msg.type === 'runChat') {
-            // Automatischer Fallback auf Groq, falls Modell nicht gesetzt aber Key vorhanden
+            // Nur fallbacken, wenn wirklich KEIN Modell übergeben wurde — eine explizite
+            // Gemini-Auswahl darf niemals stillschweigend zu Groq umgeleitet werden.
             let selectedModel = msg.model;
-            const groqApiKey = context.globalState.get<string>('groqApiKey');
-            if ((!selectedModel || selectedModel.includes('gemini')) && groqApiKey) {
-                selectedModel = 'groq:llama-3.3-70b-versatile';
+            if (!selectedModel) {
+                const groqApiKey = context.globalState.get<string>('groqApiKey');
+                selectedModel = groqApiKey ? 'groq:openai/gpt-oss-120b' : 'gemini-3.6-flash';
             }
-            await handleAgent(target, context, msg.prompt, selectedModel || 'gemini-3.6-flash', msg.bypass, msg.autoAccept, msg.agentMode !== false);
+            await handleAgent(target, context, msg.prompt, selectedModel, msg.bypass, msg.autoAccept, msg.agentMode !== false);
         } else if (msg.type === 'suggestNext') {
             await handleSuggestNext(target, context);
         } else if (msg.type === 'applyCodeToEditor') {
@@ -660,7 +661,7 @@ async function handleExecutePrompt(
         .replace(/\{file\}/g, fileName);
 
     const groqApiKey = context.globalState.get<string>('groqApiKey');
-    const defaultModel = groqApiKey ? 'groq:llama-3.3-70b-versatile' : 'gemini-3.6-flash';
+    const defaultModel = groqApiKey ? 'groq:openai/gpt-oss-120b' : 'gemini-3.6-flash';
     await handleAgent(target, context, processedPrompt, defaultModel, false, false);
 }
 
@@ -960,7 +961,7 @@ ${activeFileContent ? `Inhalt:\n\`\`\`\n${activeFileContent}\n\`\`\`` : '(keine 
             return;
         }
 
-        const selectedGroqModel = model.replace('groq:', '') || 'llama-3.3-70b-versatile';
+        const selectedGroqModel = model.replace('groq:', '') || 'openai/gpt-oss-120b';
         target.webview.postMessage({ type: 'status', text: `⚡ Sende Anfrage an Groq LPU Cloud (${selectedGroqModel})...` });
 
         // groq/compound & groq/compound-mini akzeptieren nur ihre eigenen server-seitigen

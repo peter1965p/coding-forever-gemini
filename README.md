@@ -1,6 +1,6 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.8.0-orange.svg)
+![Version](https://img.shields.io/badge/version-2.8.1-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -75,6 +75,10 @@ Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projects
 
 ## Changelog
 
+### 2.8.1
+* Der eigentliche Bug: runChat hat die explizite Gemini-Wahl ignoriert und bei vorhandenem Groq-Key immer auf Groq umgeleitet. Jetzt nur noch Fallback, wenn wirklich gar kein Modell übergeben wurde – die Dropdown-Auswahl zählt jetzt tatsächlich, ganz gleich welche Keys hinterlegt sind.
+
+* Die eigentliche Fehlerursache dahinter: llama-3.3-70b-versatile wurde von Groq am 16.08.2026 abgeschaltet (zusammen mit llama-3.1-8b-instant; qwen/qwen3-32b schon am 17.07.). Alle Fallback-Referenzen im Code zeigten noch auf die toten Modelle. Jetzt auf die offiziell empfohlenen Nachfolger umgestellt: openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.6-27b.
 
 ### 2.8.0 
 * react-syntax-highlighter mit Prism-Engine + vscDarkPlus-Theme (das gleiche Farbschema, das VS Code selbst für dunkle Themes nutzt) eingebaut
