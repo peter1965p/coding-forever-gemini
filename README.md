@@ -1,6 +1,6 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.8.1-orange.svg)
+![Version](https://img.shields.io/badge/version-2.8.2-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -74,6 +74,11 @@ Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projects
 ---
 
 ## Changelog
+
+### 2.8.2
+* **Gemini-Fehler waren unsichtbar:** Im Gemini-Pfad wurde die HTTP-Antwort von Google nie auf Fehler geprüft (anders als bei Groq/Ollama). Schlug der Request fehl (falsche Modell-ID, Quota, kaputtes Tool-Schema...), kam nur ein nichtssagendes "Keine Antwort erhalten." an – die echte Fehlermeldung von Google ging verloren. Jetzt wird sie direkt angezeigt, inklusive Safety-Block-Grund, falls Google aus Sicherheitsgründen blockiert statt zu antworten.
+
+* **Ausgeführte Prompt-Blöcke** (aus dem Prompt-Manager) liefen bisher immer über Groq, sobald irgendein Groq-Key hinterlegt war – unabhängig davon, dass der ganze Sinn der Extension "Gemini kostenlos & ohne Limit" ist. Gemini ist jetzt der echte Default, Groq springt nur ein, wenn gar kein Gemini-Key gesetzt ist.
 
 ### 2.8.1
 * Der eigentliche Bug: runChat hat die explizite Gemini-Wahl ignoriert und bei vorhandenem Groq-Key immer auf Groq umgeleitet. Jetzt nur noch Fallback, wenn wirklich gar kein Modell übergeben wurde – die Dropdown-Auswahl zählt jetzt tatsächlich, ganz gleich welche Keys hinterlegt sind.

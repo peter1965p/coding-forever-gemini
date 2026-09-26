@@ -660,8 +660,12 @@ async function handleExecutePrompt(
         .replace(/\{selection\}/g, activeCode)
         .replace(/\{file\}/g, fileName);
 
+    // Gespeicherte Prompt-Blöcke haben (anders als der Chat) keine eigene Modell-Auswahl.
+    // Da der ganze Sinn der Extension "Gemini kostenlos & ohne Limit" ist, bleibt Gemini
+    // hier der echte Default – Groq springt nur ein, wenn gar kein Gemini-Key hinterlegt ist.
+    const geminiApiKey = context.globalState.get<string>('geminiApiKey');
     const groqApiKey = context.globalState.get<string>('groqApiKey');
-    const defaultModel = groqApiKey ? 'groq:openai/gpt-oss-120b' : 'gemini-3.6-flash';
+    const defaultModel = geminiApiKey ? 'gemini-3.6-flash' : (groqApiKey ? 'groq:openai/gpt-oss-120b' : 'gemini-3.6-flash');
     await handleAgent(target, context, processedPrompt, defaultModel, false, false);
 }
 
@@ -1196,7 +1200,17 @@ ${activeFileContent ? `Inhalt:\n\`\`\`\n${activeFileContent}\n\`\`\`` : '(keine 
                 body: JSON.stringify(geminiBody)
             });
 
-            const data: any = await res.json();
+            const data: any = await res.json().catch(() => ({}));
+
+            // Bisher wurde ein Fehler von Google (falsche Modell-ID, Quota, kaputtes
+            // Tool-Schema etc.) hier verschluckt: data.candidates war dann undefined
+            // und es kam nur das nichtssagende "Keine Antwort erhalten." an.
+            if (!res.ok) {
+                const errMsg = data.error?.message || res.statusText;
+                target.webview.postMessage({ type: 'response', text: `Gemini Fehler (${res.status}): ${errMsg}` });
+                return;
+            }
+
             const candidate = data.candidates?.[0];
             const parts: any[] = candidate?.content?.parts ?? [];
 
@@ -1204,7 +1218,16 @@ ${activeFileContent ? `Inhalt:\n\`\`\`\n${activeFileContent}\n\`\`\`` : '(keine 
             const textParts = parts.filter(p => p.text).map(p => p.text).join('\n').trim();
 
             if (functionCalls.length === 0) {
-                target.webview.postMessage({ type: 'response', text: textParts || 'Keine Antwort erhalten.' });
+                // Google blockiert manchmal statt einen Fehler-Status zu senden (z.B. Safety-Filter) –
+                // in dem Fall gibt promptFeedback/candidate.finishReason den eigentlichen Grund her.
+                const blockReason = data.promptFeedback?.blockReason;
+                const finishReason = candidate?.finishReason;
+                const fallbackText = blockReason
+                    ? `Von Gemini blockiert (${blockReason}).`
+                    : (finishReason && finishReason !== 'STOP')
+                        ? `Keine Antwort erhalten (finishReason: ${finishReason}).`
+                        : 'Keine Antwort erhalten.';
+                target.webview.postMessage({ type: 'response', text: textParts || fallbackText });
                 return;
             }
 
