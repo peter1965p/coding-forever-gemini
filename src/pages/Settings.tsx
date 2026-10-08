@@ -1,130 +1,140 @@
-import React, { useState } from 'react';
-import { vscode } from '../lib/vscodeApi';
+import React, { useEffect, useState } from 'react';
+import { bootstrap, PublicSettings, vscode } from '../lib/vscodeApi';
 
-interface SettingsProps {
-  initialApiKey?: string;
-  initialChatFont?: string;
+const FONT_OPTIONS = [
+    { value: 'var(--vscode-font-family)', label: 'VS Code Standard' },
+    { value: 'var(--vscode-editor-font-family)', label: 'Editor-Schrift (monospace)' },
+    { value: "'Segoe UI', system-ui, sans-serif", label: 'Segoe UI' },
+    { value: "'JetBrains Mono', monospace", label: 'JetBrains Mono' },
+    { value: "'Fira Code', monospace", label: 'Fira Code' },
+    { value: "'Inter', system-ui, sans-serif", label: 'Inter' }
+];
+
+export const Settings: React.FC = () => {
+    const [chatFont, setChatFont] = useState(bootstrap.settings.chatFont);
+    const [saved, setSaved] = useState(false);
+
+    // Die Seite wurde vorher ohne Props gerendert und startete deshalb mit
+    // leeren Feldern — ein Klick auf "Speichern" löschte dadurch den API-Key.
+    // Keys liegen jetzt ausschließlich in der SecretStorage und werden hier
+    // gar nicht mehr angefasst.
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            if (event.data?.type === 'settings') {
+                const settings: PublicSettings = event.data.settings;
+                setChatFont(settings.chatFont);
+            }
+        };
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, []);
+
+    const handleSave = () => {
+        vscode.postMessage({ type: 'saveSettings', prefs: { chatFont } });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+    };
+
+    return (
+        <div className="cf-page">
+            <style>{PAGE_CSS}</style>
+
+            <h2 className="cf-title">Einstellungen</h2>
+            <p className="cf-lead">
+                Darstellung des Chats. API-Keys und Modelle liegen unter <strong>AI Engine</strong>,
+                die Agent-Grenzen in den VS Code Einstellungen.
+            </p>
+
+            <section className="cf-card">
+                <div className="cf-card-title">Chat-Schriftart</div>
+                <select className="cf-input" value={chatFont} onChange={e => setChatFont(e.target.value)}>
+                    {FONT_OPTIONS.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                </select>
+                <div className="cf-preview" style={{ fontFamily: chatFont }}>
+                    So sieht dein Chat aus: const antwort = await krebsi.hilf(mir);
+                </div>
+            </section>
+
+            <section className="cf-card">
+                <div className="cf-card-title">Agent-Verhalten</div>
+                <p className="cf-hint">
+                    Maximale Schritte pro Anfrage, Verlaufstiefe und die Rückfrage bei riskanten
+                    Befehlen sind VS Code Einstellungen (Präfix <code>codingForever.agent</code>).
+                </p>
+                <button className="cf-btn-secondary"
+                    onClick={() => vscode.postMessage({ type: 'openVsCodeSettings' })}>
+                    VS Code Einstellungen öffnen
+                </button>
+            </section>
+
+            <section className="cf-card">
+                <div className="cf-card-title">Version</div>
+                <p className="cf-hint">Coding Forever v{bootstrap.extVersion} · Workspace: {bootstrap.workspaceName}</p>
+                <button className="cf-btn-secondary"
+                    onClick={() => vscode.postMessage({ type: 'checkUpdates' })}>
+                    Nach Updates suchen
+                </button>
+            </section>
+
+            <button className="cf-btn-primary" onClick={handleSave}>
+                {saved ? '✓ Gespeichert' : 'Speichern'}
+            </button>
+        </div>
+    );
+};
+
+export const PAGE_CSS = `
+.cf-page {
+    padding: 18px 22px; max-width: 560px; margin: 0 auto; box-sizing: border-box;
+    color: var(--cf-fg); font-size: 13px;
 }
-
-const ACCENT = '#f97316';
-const PRIMARY = '#16a34a';
-
-export const Settings: React.FC<SettingsProps> = ({
-  initialApiKey = '',
-  initialChatFont = 'var(--vscode-font-family)'
-}) => {
-  const [apiKey, setApiKey] = useState(initialApiKey);
-  const [showPassword, setShowPassword] = useState(false);
-  const [chatFont, setChatFont] = useState(initialChatFont);
-  const [saved, setSaved] = useState(false);
-
-  const handleSave = () => {
-    vscode.postMessage({
-      type: 'saveSettings',
-      apikey: apiKey.trim(),
-      chatFont: chatFont
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  return (
-    <div style={{
-      color: 'var(--vscode-foreground)',
-      padding: '16px 20px',
-      boxSizing: 'border-box',
-      fontFamily: 'var(--vscode-font-family, sans-serif)',
-      maxWidth: '520px',
-      margin: '0 auto'
-    }}>
-      <style>{`
-        .settings-input:focus, .settings-select:focus {
-          outline: none;
-          border-color: ${ACCENT} !important;
-        }
-        .save-btn:hover { opacity: 0.9; }
-        .toggle-eye:hover { color: var(--vscode-foreground) !important; }
-      `}</style>
-
-      <h2 style={{
-      position: 'relative',
-      backgroundImage: 'linear-gradient(to bottom, #fed7aa, #f97316, #431407)',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      filter: 'drop-shadow(0 0 70px rgba(234, 88, 12, 0.5))',
-      textTransform: 'uppercase',
-      transition: 'all 1s ease'
-    }}>
-        Einstellungen
-      </h2>
-
-      
-
-      <div style={sectionStyle}>
-        <label style={labelStyle}>UI Font-Familie</label>
-        <select
-          className="settings-select"
-          value={chatFont}
-          onChange={(e) => setChatFont(e.target.value)}
-          style={inputStyle}
-        >
-          <option value="var(--vscode-font-family)">VS Code Standard</option>
-          <option value="Arial">Arial</option>
-          <option value="Consolas">Consolas (Monospace)</option>
-          <option value="Courier New">Courier New (Monospace)</option>
-          <option value="Fira Code">Fira Code (Monospace)</option>
-          <option value="Roboto">Roboto</option>
-          <option value="JetBrains Mono">JetBrains Mono</option>
-        </select>
-      </div>
-
-      <button
-        type="button"
-        className="save-btn"
-        onClick={handleSave}
-        style={{
-          width: '100%',
-          background: PRIMARY,
-          color: '#fff',
-          border: 'none',
-          padding: '10px',
-          fontWeight: 'bold',
-          borderRadius: '4px',
-          cursor: 'pointer',
-          fontSize: '0.9em',
-          textTransform: 'uppercase',
-          letterSpacing: '0.03em'
-        }}
-      >
-        {saved ? '✓ Gespeichert' : 'Einstellungen speichern'}
-      </button>
-    </div>
-  );
-};
-
-const sectionStyle: React.CSSProperties = {
-  marginBottom: '14px',
-  padding: '12px 14px',
-  background: 'var(--vscode-editor-background)',
-  border: '1px solid var(--vscode-panel-border)',
-  borderRadius: '6px'
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  marginBottom: '6px',
-  fontSize: '0.82em',
-  fontWeight: 600,
-  color: 'var(--vscode-descriptionForeground)'
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  background: 'var(--vscode-input-background)',
-  border: '1px solid var(--vscode-input-border)',
-  color: 'var(--vscode-input-foreground)',
-  padding: '8px 10px',
-  borderRadius: '4px',
-  fontSize: '0.9em',
-  boxSizing: 'border-box'
-};
+.cf-title {
+    margin: 0 0 6px; text-transform: uppercase; font-size: 20px;
+    background-image: linear-gradient(to bottom, #fed7aa, var(--cf-accent), #431407);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.cf-lead { color: var(--cf-fg-muted); font-size: 12px; line-height: 1.5; margin: 0 0 18px; }
+.cf-card {
+    margin-bottom: 14px; padding: 12px 14px; border-radius: 6px;
+    background: var(--cf-bg-elev); border: 1px solid var(--cf-border);
+}
+.cf-card-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.cf-label {
+    display: block; margin-bottom: 4px; font-size: 11.5px;
+    font-weight: 600; color: var(--cf-fg-muted);
+}
+.cf-input {
+    width: 100%; box-sizing: border-box; padding: 6px 9px; border-radius: 4px; font-size: 12px;
+    background: var(--cf-bg-input); color: var(--cf-fg); border: 1px solid var(--cf-border);
+    font-family: inherit;
+}
+.cf-input:focus { outline: none; border-color: var(--cf-accent); }
+.cf-preview {
+    margin-top: 10px; padding: 8px 10px; border-radius: 4px; font-size: 12px;
+    background: var(--cf-bg); border: 1px dashed var(--cf-border); color: var(--cf-fg-muted);
+}
+.cf-hint { font-size: 11.5px; color: var(--cf-fg-muted); line-height: 1.5; margin: 0 0 10px; }
+.cf-hint code {
+    background: var(--cf-code-bg); border-radius: 3px; padding: 1px 4px;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.cf-btn-primary {
+    width: 100%; padding: 9px; border: none; border-radius: 4px; cursor: pointer;
+    background: var(--cf-accent); color: #fff; font-weight: 700; font-size: 12.5px;
+    text-transform: uppercase; letter-spacing: .03em;
+}
+.cf-btn-primary:hover { background: var(--cf-accent-hover); }
+.cf-btn-secondary {
+    padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11.5px;
+    background: transparent; color: var(--cf-fg); border: 1px solid var(--cf-border);
+}
+.cf-btn-secondary:hover { border-color: var(--cf-accent); color: var(--cf-accent); }
+.cf-row { display: flex; gap: 6px; align-items: center; }
+.cf-badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 3px;
+    background: var(--cf-success); color: #fff; white-space: nowrap;
+}
+.cf-badge.muted { background: var(--cf-border-strong); color: var(--cf-fg-muted); }
+`;

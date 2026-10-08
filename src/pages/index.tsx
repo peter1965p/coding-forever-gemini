@@ -1,93 +1,91 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AiSettings } from './AiSettings';
-import { PromptManager } from './PromptManager';
-import { Dashboard } from './Dashboard';
-import { Settings } from './Settings';
 import { Chat } from './chat';
+import { Dashboard } from './Dashboard';
+import { PromptManager } from './PromptManager';
+import { Settings } from './Settings';
+import { bootstrap } from '../lib/vscodeApi';
+import { THEME_CSS } from '../lib/theme';
 
-const App = () => {
-  const initialRoute = (window as any).INITIAL_ROUTE || 'dashboard';
-  const [activeTab, setActiveTab] = useState(initialRoute);
-  const extName = (window as any).EXT_NAME;
-  const extVersion = (window as any).EXT_VERSION;
-  const userName = (window as any).VSCODE_USER_NAME;
+const TABS = [
+    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'prompts', label: 'Prompt Library' },
+    { id: 'ai-settings', label: 'AI Engine' },
+    { id: 'settings', label: 'Einstellungen' }
+];
 
-  // Wenn wir im Chat sind, zeigen wir die Leiste nicht
-  if (activeTab === 'chat') {
-    return <Chat extName={extName} extVersion={extVersion} userName={userName} />;
-  }
+const App: React.FC = () => {
+    const [activeTab, setActiveTab] = useState(bootstrap.route);
 
-  return (
-    <div className="app-container" style={{ height: '100vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', background: 'var(--vscode-editor-background)' }}>
-      
-      {/* Die Menüleiste oben im Dashboard-Fenster */}
-      <nav style={{ 
-        display: 'flex', 
-        gap: '6px', 
-        padding: '8px 16px', 
-        background: 'var(--vscode-sideBar-background, var(--vscode-editor-background))', 
-        borderBottom: '1px solid var(--vscode-panel-border)',
-        alignItems: 'center',
-        flexShrink: 0
-      }}>
-        <button 
-          style={getButtonStyle(activeTab === 'dashboard')} 
-          onClick={() => setActiveTab('dashboard')}
-        >
-          Dashboard
-        </button>
-        <button 
-          style={getButtonStyle(activeTab === 'prompts')} 
-          onClick={() => setActiveTab('prompts')}
-        >
-          Prompt Library
-        </button>
-        <button 
-          style={getButtonStyle(activeTab === 'ai-settings')} 
-          onClick={() => setActiveTab('ai-settings')}
-        >
-          AI Engine
-        </button>
-        <button 
-          style={getButtonStyle(activeTab === 'settings')} 
-          onClick={() => setActiveTab('settings')}
-        >
-          Einstellungen
-        </button>
-      </nav>
+    // Die Extension kann die Ansicht wechseln (z.B. über einen Header-Button).
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            if (event.data?.type === 'navigate' && event.data.route) {
+                setActiveTab(event.data.route);
+            }
+        };
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, []);
 
-      {/* Inhalt des jeweiligen Unterfensters */}
-      <main style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-        {activeTab === 'ai-settings' && <AiSettings />}
-        {activeTab === 'prompts' && <PromptManager />}
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'settings' && <Settings />}
-      </main>
-    </div>
-  );
+    if (activeTab === 'chat') {
+        return <Chat extName="Coding Forever" userName={bootstrap.settings.userName || bootstrap.osUser} />;
+    }
+
+    return (
+        <div className="cf-root cf-shell">
+            <style>{THEME_CSS}{SHELL_CSS}</style>
+
+            <nav className="cf-nav">
+                {TABS.map(tab => (
+                    <button
+                        key={tab.id}
+                        className={`cf-nav-btn${activeTab === tab.id ? ' active' : ''}`}
+                        onClick={() => setActiveTab(tab.id)}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+                <span className="cf-nav-version">v{bootstrap.extVersion}</span>
+            </nav>
+
+            <main className="cf-main">
+                {activeTab === 'dashboard' && <Dashboard />}
+                {activeTab === 'prompts' && <PromptManager />}
+                {activeTab === 'ai-settings' && <AiSettings />}
+                {activeTab === 'settings' && <Settings />}
+            </main>
+        </div>
+    );
 };
 
-// Button-Design mit festem #ff6200 für den aktiven Zustand
-const getButtonStyle = (isActive: boolean) => ({
-  background: isActive ? '#ff6200' : 'transparent',
-  color: isActive ? '#ffffff' : 'var(--vscode-foreground)',
-  border: isActive ? 'none' : '1px solid transparent',
-  padding: '5px 12px',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  fontSize: '0.85em',
-  fontWeight: isActive ? '600' : 'normal',
-  transition: 'background 0.2s'
-});
+const SHELL_CSS = `
+.cf-shell {
+    display: flex; flex-direction: column; height: 100vh; box-sizing: border-box;
+    background: var(--cf-bg); color: var(--cf-fg);
+    font-family: var(--vscode-font-family, sans-serif);
+}
+.cf-nav {
+    display: flex; align-items: center; gap: 6px; padding: 8px 14px; flex-shrink: 0;
+    background: var(--cf-bg-elev); border-bottom: 1px solid var(--cf-border);
+}
+.cf-nav-btn {
+    background: transparent; color: var(--cf-fg); border: 1px solid transparent;
+    padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;
+    transition: background .15s;
+}
+.cf-nav-btn:hover { background: var(--cf-bg-hover); }
+.cf-nav-btn.active { background: var(--cf-accent); color: #fff; font-weight: 600; }
+.cf-nav-version { margin-left: auto; font-size: 10px; color: var(--cf-fg-muted); }
+.cf-main { flex: 1; overflow-y: auto; }
+`;
 
-// Automatisches Mounten in das von der Extension bereitgestellte Root-Element
 const container = document.getElementById('root');
 if (container) {
-  const root = ReactDOM.createRoot(container);
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
+    ReactDOM.createRoot(container).render(
+        <React.StrictMode>
+            <App />
+        </React.StrictMode>
+    );
 }

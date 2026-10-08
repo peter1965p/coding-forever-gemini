@@ -1,8 +1,8 @@
 {
     "name": "coding-forever",
     "displayName": "Coding Forever",
-    "description": "Direct Gemini Flash Integration without Limits",
-    "version": "2.8.2",
+    "description": "Agentischer KI-Chat in VS Code: Gemini, Groq, Claude, OpenAI und lokale Ollama-Modelle mit Streaming, Datei-Tools und Diff-Kontrolle.",
+    "version": "2.9.0",
     "publisher": "PeterPaeffgen",
     "author": {
         "name": "Peter Päffgen",
@@ -18,9 +18,13 @@
     },
     "categories": [
         "AI",
-        "Chat"
+        "Chat",
+        "Programming Languages",
+        "Other"
     ],
-    "activationEvents": [],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
     "main": "./dist/extension.js",
     "contributes": {
         "viewsContainers": {
@@ -74,6 +78,24 @@
                 "icon": "$(bug)"
             },
             {
+                "command": "coding-forever.sendSelection",
+                "category": "Coding Forever",
+                "title": "Auswahl an den Chat senden",
+                "icon": "$(comment)"
+            },
+            {
+                "command": "coding-forever.stopAgent",
+                "category": "Coding Forever",
+                "title": "Laufenden Agenten stoppen",
+                "icon": "$(debug-stop)"
+            },
+            {
+                "command": "coding-forever.checkUpdates",
+                "category": "Coding Forever",
+                "title": "Nach Updates suchen",
+                "icon": "$(cloud-download)"
+            },
+            {
                 "command": "codingForever.openHistory",
                 "category": "Coding Forever",
                 "title": "Chat-Verlauf ein-/ausblenden",
@@ -97,6 +119,19 @@
                     "when": "view == codingForeverView",
                     "group": "navigation@3"
                 }
+            ],
+            "editor/context": [
+                {
+                    "command": "coding-forever.sendSelection",
+                    "group": "navigation@9",
+                    "when": "editorTextFocus"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "coding-forever.fixError",
+                    "when": "false"
+                }
             ]
         },
         "configuration": {
@@ -105,7 +140,30 @@
                 "codingForever.projectsDirectory": {
                     "type": "string",
                     "default": "",
+                    "order": 1,
                     "markdownDescription": "Basisordner für **neue Projekte** (`Coding Forever: Node-Projekt erstellen`). Leer lassen, um `~/Dev` zu verwenden, falls vorhanden."
+                },
+                "codingForever.agent.maxTurns": {
+                    "type": "number",
+                    "default": 12,
+                    "minimum": 1,
+                    "maximum": 50,
+                    "order": 2,
+                    "markdownDescription": "Wie viele Tool-Schritte der Agent pro Anfrage höchstens macht, bevor er abbricht."
+                },
+                "codingForever.agent.historyDepth": {
+                    "type": "number",
+                    "default": 20,
+                    "minimum": 0,
+                    "maximum": 200,
+                    "order": 3,
+                    "markdownDescription": "Wie viele vorherige Chat-Nachrichten als Kontext mitgeschickt werden. `0` schaltet das Gesprächsgedächtnis ab."
+                },
+                "codingForever.agent.confirmDangerousCommands": {
+                    "type": "boolean",
+                    "default": true,
+                    "order": 4,
+                    "markdownDescription": "Bei riskanten Shell-Befehlen (`rm -rf`, `sudo`, `git push`, Pipe-nach-Shell …) immer nachfragen — auch wenn **Accept All** aktiv ist."
                 }
             }
         }
@@ -117,23 +175,19 @@
         "watch:esbuild": "node esbuild.js --watch",
         "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
         "package": "npm run check-types && npm run lint && node esbuild.js --production",
-        "compile-tests": "tsc -p . --outDir out",
-        "watch-tests": "tsc -p . -w --outDir out",
-        "pretest": "npm run compile-tests && npm run compile && npm run lint",
-        "check-types": "tsc --noEmit",
+        "check-types": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.webview.json",
         "lint": "eslint src",
-        "test": "vscode-test"
+        "test": "npm run check-types && npm run lint && npm run test:unit",
+        "vsix": "npm run package && npx --yes @vscode/vsce package --no-dependencies",
+        "test:unit": "node esbuild.js --tests && node --test \"out-test/*.test.js\""
     },
     "devDependencies": {
-        "@types/mocha": "^10.0.10",
         "@types/node": "24.x",
         "@types/react": "^19.2.18",
         "@types/react-dom": "^19.2.5",
         "@types/react-syntax-highlighter": "^15.5.13",
         "@types/sql.js": "^1.4.11",
         "@types/vscode": "^1.134.0",
-        "@vscode/test-cli": "^0.0.15",
-        "@vscode/test-electron": "^3.0.0",
         "esbuild": "^0.28.1",
         "eslint": "^10.5.0",
         "npm-run-all": "^4.1.5",
@@ -145,12 +199,31 @@
         "serialize-javascript": "^7.0.6"
     },
     "dependencies": {
-        "@google/genai": "^2.18.0",
-        "groq-sdk": "^1.6.0",
         "lucide-react": "^1.38.0",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
+        "react-markdown": "^9.1.0",
         "react-syntax-highlighter": "^16.1.1",
+        "remark-gfm": "^4.0.1",
         "sql.js": "^1.14.2"
+    },
+    "keywords": [
+        "ai",
+        "chat",
+        "agent",
+        "gemini",
+        "groq",
+        "claude",
+        "openai",
+        "ollama",
+        "copilot",
+        "assistant"
+    ],
+    "license": "MIT",
+    "capabilities": {
+        "untrustedWorkspaces": {
+            "supported": "limited",
+            "description": "Der Agent kann Dateien schreiben und Befehle ausführen. In nicht vertrauenswürdigen Ordnern ist das nur eingeschränkt sinnvoll."
+        }
     }
 }

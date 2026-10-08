@@ -1,10 +1,14 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-2.8.2-orange.svg)
+![Version](https://img.shields.io/badge/version-2.9.0-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-**Direct Gemini Flash Integration without Limits** — Die ultimative VS Code Extension für ungedrosselte KI-Entwicklung, angetrieben direkt von der Google Gemini API. Coding wie Du es willst!
+**Agentischer KI-Chat direkt in VS Code.** Gemini, Groq, Claude, OpenAI und lokale
+Ollama-Modelle in einem Fenster — mit Streaming, Datei-Tools und Diff-Kontrolle vor
+jeder Änderung. Kein Abo, keine künstlichen Limits: du bringst deine eigenen API-Keys mit.
+
+![Chat](https://raw.githubusercontent.com/peter1965p/coding-forever-gemini/master/media/Chat.png)
 
 ---
 
@@ -13,178 +17,192 @@
 * **Peter Päffgen**
 * Senior Fullstack Architect
 * 40 Jahre am Puls der IT | KI-gestützte Multilevel-Entwicklung | Individuelle KI-Beratung
-* **Web:** [https://www.paeffgen-it.de](https://www.paeffgen-it.de)
-* **Dev:** [https://github.com/peter1965p](https://github.com/peter1965p)
+* **Web:** [paeffgen-it.de](https://www.paeffgen-it.de)
+* **Dev:** [github.com/peter1965p](https://github.com/peter1965p)
 
 ---
 
-## Features
+## Was die Extension macht
 
-* **Autonomer Agenten-Modus:** KI führt Datei-Analysen, Erstellungen und Terminal-Befehle selbstständig im Projekt aus.
-* **Visuelle Diff-Überwachung:** Volle Kontrolle vor Code-Übernahmen durch native VS Code Diff-Ansichten (`gemini-diff://`).
-* **Chat-History & Persistent Storage:** Alle Chat-Nachrichten werden lokal in SQLite gespeichert. Lade frühere Chats mit einem Klick aus dem History-Drawer.
-* **Strukturierte Chat-Ausgaben:** Markdown-Support mit Headings, Code-Blöcken, Listen und besserer visueller Hierarchie – wie ein echter AI-Assistant.
-* **Chat-Session Management:** Automatische Session-Verwaltung mit Titeln, Timestamps und Lösch-Funktionen direkt in der History.
-* **Chat-History Drawer & Header-Badges:** Synchronisierte Verlaufssteuerung und visuelle Status-Badges (`Agent [ON]`, `Bypass [ON]`, `Accept [ON]`) direkt in der Live-Headerleiste.
-* **Direkte API-Anbindung:** Kein unnötiges Abo und keine künstlichen Limits – direkter Zugriff auf Claude API, Groq API, Gemini Flash und Pro Modelle.
-* **Flexibles Engine-Management:** Nutzen von Groq, Google Gemini oder Einbindung lokaler Modelle (z. B. Ollama) über SQLite-Datenbank-Anbindung.
-* **Sicherheitsfilter & Modi:** Dynamic Bypass Mode und Auto-Accept direkt über UI-Switches oder Einstellungen steuerbar.
-* **Prompt Manager:** Lokaler SQLite3-basierter Manager mit vordefinierten Prompts & eigenen Vorlagen per Kontext-Variablen (`{selection}`, `{file}`).
-* **Native VS Code Quick Fixes:** Direktes Korrigieren von Editor-Fehlern via Code-Actions (Glühbirne) mit einem Klick im Chat.
-* **Projektgenerator:** Erstellt neue Node.js-, TypeScript-, React/Vite- und Next.js-Projekte direkt aus VS Code.
-* **Plattformübergreifend:** Automatische Erkennung von Windows, macOS und Linux inklusive passender `npm`-/`npx`-Befehle und Pfade.
+### Agent-Modus
+
+Im Agent-Modus bekommt das Modell Werkzeuge und arbeitet selbstständig im Projekt:
+Überblick verschaffen, gezielt suchen, ändern, Tests laufen lassen, eigene Fehler
+nachbessern. Jede Dateiänderung wird vorher als VS-Code-Diff gezeigt.
+
+| Tool | Zweck |
+| --- | --- |
+| `list_files` | Projektstruktur, optional auf einen Unterordner begrenzt |
+| `read_file` | Datei lesen (Workspace-relativ) |
+| `grep_workspace` | Regex-Suche mit Datei und Zeilennummer |
+| `edit_file` | Eindeutige Textstelle ersetzen — spart Tokens, kein Vollüberschreiben |
+| `write_file` | Datei anlegen oder komplett neu schreiben |
+| `get_diagnostics` | TypeScript-/ESLint-Fehler aus VS Code, damit der Agent sich selbst prüft |
+| `git_diff` | Uncommittete Änderungen als Diff |
+| `run_command` | Shell-Befehl ausführen **und dessen Ausgabe auswerten** |
+
+Ohne Agent-Modus läuft der Chat ohne Datei- und Terminal-Zugriff; das Modell bekommt
+nur die gerade offene Datei mit. Das ist spürbar günstiger bei knappen Token-Limits.
+
+### Mehrere Anbieter, ein Dropdown
+
+| Anbieter | Besonderheit | Key |
+| --- | --- | --- |
+| **Google Gemini** | Großzügiges Free-Tier, Live-Modellliste | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| **Groq** | Sehr schnell, kostenloses Tier, Live-Modellliste | [console.groq.com](https://console.groq.com/keys) |
+| **Anthropic Claude** | Stark bei langen Agent-Läufen | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+| **OpenAI** | GPT- und o-Serie | [platform.openai.com](https://platform.openai.com/api-keys) |
+| **Ollama** | Komplett offline, kein Key nötig | — |
+
+Alle Anbieter streamen, alle können Tool-Calling. Welche Modelle verfügbar sind, wird
+live bei der jeweiligen API abgefragt — veraltete Dropdown-Einträge gibt es nicht mehr.
+
+### Chat
+
+* **Streaming** — Antworten erscheinen Wort für Wort, nicht erst am Ende.
+* **Stop-Button** — bricht Modell und laufenden Request sofort ab.
+* **Gesprächsgedächtnis** — die letzten Nachrichten gehen als Kontext mit, Nachfragen funktionieren.
+* **Verlauf in SQLite** — pro Workspace, mit automatisch generierten Titeln.
+* **`/`** öffnet die Prompt-Bibliothek, **`@`** hängt eine Datei aus dem Workspace an.
+* **Markdown mit GFM** — Tabellen, Listen, Links, Syntax-Highlighting, Copy-/Download-/Diff-/Übernehmen-Buttons an jedem Code-Block.
+* Folgt dem aktiven VS-Code-Theme, hell wie dunkel.
+
+### Rundherum
+
+* **Quick Fix** — Fehler im Editor per Glühbirne an den Chat geben.
+* **Kontextmenü** — markierten Code mit „Auswahl an den Chat senden" übergeben.
+* **Prompt-Bibliothek** — eigene Vorlagen mit `{selection}` und `{file}`, global oder pro Workspace.
+* **Dashboard** — Hardware-Monitor (CPU-Last, RAM, Temperatur, GPU), Anbieter-Status, Direkt-Prompt.
+* **Projektgenerator** — Node.js, Node + TypeScript, React/Vite, Next.js.
+* **Modell-Empfehlung** — schlägt anhand von RAM und GPU passende Ollama-Modelle vor und installiert sie auf Klick.
+
+---
+
+## Sicherheit
+
+Ein Agent, der Dateien schreiben und Befehle ausführen darf, braucht Grenzen:
+
+* **API-Keys** liegen in der verschlüsselten SecretStorage von VS Code (OS-Keychain)
+  und werden nie an das Chat-Fenster übertragen.
+* **Workspace-Grenze:** Jeder Pfad, den das Modell anfasst, wird geprüft — auch gegen
+  Symlinks, die aus dem Projekt herausführen.
+* **Riskante Befehle** (`rm -rf`, `sudo`, `dd`, Pipe-nach-Shell, `git push`,
+  `npm publish` …) werden immer bestätigt, auch bei aktivem **Accept All**.
+* **Diff vor jedem Schreibvorgang.** Mit ausgeschaltetem Accept All wird jede einzelne
+  Änderung einzeln freigegeben.
 
 ---
 
 ## Voraussetzungen
 
 * VS Code `1.134` oder neuer
-* Node.js inklusive `npm` und `npx` für den Projektgenerator
-* Internetzugang für die Installation von Projektvorlagen und npm-Paketen
+* Mindestens ein API-Key **oder** eine lokale Ollama-Instanz
+* Node.js mit `npm`/`npx` für den Projektgenerator
 
-Der Projektgenerator funktioniert auf Windows, macOS und Linux. Die Extension erkennt das Betriebssystem sowie die verfügbaren Node.js-Werkzeuge automatisch.
+---
 
-## Verwendung
+## Einstieg
 
-1. Installiere die Extension in VS Code, mit: ext install PeterPaeffgen.coding-forever
-2. Öffne das **Coding Forever** Icon in der Activity Bar.
-3. Trage über das Zahnrad deinen Google Gemini API Key ein ([Hier kostenlos erstellen](https://aistudio.google.com/api-keys)).
-4. Wähle dein gewünschtes Modell aus und starte das autonome Coding!
+1. Extension installieren: `ext install PeterPaeffgen.coding-forever`
+2. **Coding Forever** in der Activity Bar öffnen.
+3. Über das Zahnrad zu **AI Engine** und mindestens einen API-Key eintragen —
+   oder „Lokale Modelle" für Ollama einschalten.
+4. Modell im Dropdown wählen, **Agent** einschalten, los.
+
+> Beim ersten Start mit **Accept All** aus arbeiten: dann wird jede Änderung einzeln
+> im Diff gezeigt und freigegeben. Erst einschalten, wenn klar ist, wie das Modell arbeitet.
 
 ### Neues Projekt erstellen
 
-1. Öffne die Command Palette mit `Strg+Shift+P` unter Windows/Linux oder `Cmd+Shift+P` unter macOS.
-2. Starte **Coding Forever: Node-Projekt erstellen**. Alternativ kannst du im Dashboard auf **Neues Node-Projekt erstellen** klicken.
-3. Wähle eine Projektvorlage aus:
-	* Node.js
-	* Node.js + TypeScript
-	* React + Vite
-	* Next.js
-4. Wähle den Zielordner und gib den Namen des neuen Projektordners ein.
+1. Command Palette (`Strg+Shift+P` / `Cmd+Shift+P`) → **Coding Forever: Node-Projekt erstellen**
+   (oder im Dashboard auf **Neues Projekt**).
+2. Vorlage wählen: Node.js, Node.js + TypeScript, React + Vite oder Next.js.
+3. Zielordner und Projektnamen angeben.
 
-Die Extension legt den Projektordner an, führt das passende npm- oder npx-Skript aus und öffnet das fertige Projekt anschließend automatisch in VS Code. Als Standardziel werden vorhandene Ordner in dieser Reihenfolge verwendet:
+Als Standardziel wird der erste vorhandene dieser Ordner benutzt: `~/Dev`,
+`~/Documents/Dev`, der Ordner neben dem offenen Workspace, das Home-Verzeichnis.
+Anpassbar über `codingForever.projectsDirectory`.
 
-1. `~/Dev`
-2. `~/Documents/Dev`
-3. Der Ordner neben dem aktuell geöffneten Workspace
-4. Das Home-Verzeichnis
+---
 
-Der Standardpfad kann in den VS-Code-Einstellungen über `codingForever.projectsDirectory` angepasst werden.
+## Einstellungen
+
+| Einstellung | Standard | Bedeutung |
+| --- | --- | --- |
+| `codingForever.projectsDirectory` | `""` | Basisordner für neue Projekte |
+| `codingForever.agent.maxTurns` | `12` | Maximale Tool-Schritte pro Anfrage |
+| `codingForever.agent.historyDepth` | `20` | Nachrichten als Gesprächskontext (`0` schaltet das Gedächtnis ab) |
+| `codingForever.agent.confirmDangerousCommands` | `true` | Rückfrage bei riskanten Shell-Befehlen, auch bei Accept All |
+
+---
+
+## Befehle
+
+| Befehl | Beschreibung |
+| --- | --- |
+| `Coding Forever: Chat Tab öffnen` | Chat als vollen Editor-Tab |
+| `Coding Forever: Dashboard öffnen` | Hardware-Monitor und Direkt-Prompt |
+| `Coding Forever: Einstellungen öffnen` | AI Engine, Prompt-Bibliothek, Darstellung |
+| `Coding Forever: Auswahl an den Chat senden` | Markierten Code übergeben |
+| `Coding Forever: Laufenden Agenten stoppen` | Bricht den aktiven Durchlauf ab |
+| `Coding Forever: Node-Projekt erstellen` | Projektgenerator |
+| `Coding Forever: Nach Updates suchen` | Prüft das neueste GitHub-Release |
+| `Coding Forever: Chat-Verlauf ein-/ausblenden` | Verlaufs-Drawer |
+
+---
+
+## Entwicklung
+
+```bash
+npm install
+npm run watch     # esbuild + tsc im Watch-Modus
+npm test          # Typecheck, Lint und 35 Unit-Tests
+npm run vsix      # .vsix-Paket bauen
+```
+
+Die Unit-Tests brauchen kein VS Code: `src/test/unit/vscodeStub.ts` ersetzt das
+`vscode`-Modul beim Test-Build, sodass Pfad-Schutz, Command-Prüfung und die
+Message-Konvertierung aller Anbieter direkt mit `node --test` laufen.
+
+### Aufbau
+
+```
+src/
+  extension.ts        Aktivierung, Commands, Webview-Routing
+  providers/          Ein LlmProvider-Interface, fünf Implementierungen
+  agent/              Tool-Definitionen, Ausführung, gemeinsamer Agent-Loop
+  system/             Hardware-Scan, Update-Check, Projektgenerator
+  lib/                SQLite, SecretStorage, Webview-HTML, Stream-Leser
+  pages/              React-Oberfläche (Chat, Dashboard, AI Engine, Prompts)
+```
+
+Ein neuer Anbieter braucht nur eine `chat()`-Methode, die dem `LlmProvider`-Interface
+folgt — der Agent-Loop, das Tool-Handling und die Fehlerbehandlung gelten dann automatisch.
 
 ---
 
 ## Changelog
 
-### 2.8.2
-* **Gemini-Fehler waren unsichtbar:** Im Gemini-Pfad wurde die HTTP-Antwort von Google nie auf Fehler geprüft (anders als bei Groq/Ollama). Schlug der Request fehl (falsche Modell-ID, Quota, kaputtes Tool-Schema...), kam nur ein nichtssagendes "Keine Antwort erhalten." an – die echte Fehlermeldung von Google ging verloren. Jetzt wird sie direkt angezeigt, inklusive Safety-Block-Grund, falls Google aus Sicherheitsgründen blockiert statt zu antworten.
-
-* **Ausgeführte Prompt-Blöcke** (aus dem Prompt-Manager) liefen bisher immer über Groq, sobald irgendein Groq-Key hinterlegt war – unabhängig davon, dass der ganze Sinn der Extension "Gemini kostenlos & ohne Limit" ist. Gemini ist jetzt der echte Default, Groq springt nur ein, wenn gar kein Gemini-Key gesetzt ist.
-
-### 2.8.1
-* Der eigentliche Bug: runChat hat die explizite Gemini-Wahl ignoriert und bei vorhandenem Groq-Key immer auf Groq umgeleitet. Jetzt nur noch Fallback, wenn wirklich gar kein Modell übergeben wurde – die Dropdown-Auswahl zählt jetzt tatsächlich, ganz gleich welche Keys hinterlegt sind.
-
-* Die eigentliche Fehlerursache dahinter: llama-3.3-70b-versatile wurde von Groq am 16.08.2026 abgeschaltet (zusammen mit llama-3.1-8b-instant; qwen/qwen3-32b schon am 17.07.). Alle Fallback-Referenzen im Code zeigten noch auf die toten Modelle. Jetzt auf die offiziell empfohlenen Nachfolger umgestellt: openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.6-27b.
-
-### 2.8.0 
-* react-syntax-highlighter mit Prism-Engine + vscDarkPlus-Theme (das gleiche Farbschema, das VS Code selbst für dunkle Themes nutzt) eingebaut
-Registrierte Sprachen: TSX, TypeScript, JSX, JavaScript, Python, JSON, Bash, SQL, CSS, HTML, YAML – Keywords, Strings, JSX-Tags, Props etc.jetzt alle farblich unterschieden
-* Kleiner Nebeneffekt: Bundle wächst von ~241KB auf ~910KB (Prism-Grammatiken + Theme-Daten) – für eine lokale VS-Code-Extension völlig unkritisch, lädt trotzdem sofort
-* Einige Bugs wurden auch Bereinigt
-
-### 2.7.2
-* **Local Model Mode (ohne Agenten Mode)**
-* Ohne Agent-Modus bekommt er jetzt Name und Inhalt der gerade offenen Datei direkt in den System-Prompt (gekappt bei 4000 Zeichen, damit's nicht wieder Richtung TPM-Limit ausartet) – plus die klare Ansage, nie nach einem Pfad zu fragen, sondern bei projektweiten Anfragen kurz zu sagen "dafür brauchst du Agent-Modus" statt rumzueiern.
-
-* Für "scanne das ganze Projekt" bleibt's ohne Agent trotzdem ehrlich limitiert – er sieht ja wirklich nur die eine Datei, kann nicht zaubern. Aber für "was macht diese Funktion hier" oder ähnliche Fragen zur offenen Datei sollte er jetzt direkt antworten, ohne erst nach Grunddaten zu fragen, die er längst hätte wissen können.
-
-### 2.7.1
-* **LM Bug** Lokale Modelle wurden nicht erkannt. Deswegen musste ich die 2.7-1 nachziehen! Der Bug ist jetzt behoben.
-
-### 2.7.0
-* **AiSettings:** beim Umschalten auf "Lokale Modelle" wird jetzt tatsächlich SCAN_SYSTEM gesendet. Zeigt jetzt immer (nicht nur wenn 0 Ollama-Modelle gefunden werden) die gescannte Hardware + passende Empfehlungen mit Install-Button.
-
-* **Dashboard:** neue "System-Monitor"-Sektion mit echten grafischen Balken für CPU-Load, RAM-Auslastung (%, GB frei), CPU-Temperatur (farbcodiert grün/orange/rot) und GPU-Name. Läuft mit einmaligem vollem Scan beim Öffnen + Live-Polling alle 4s über einen neuen, leichten SCAN_LIVE_STATS-Handler (kein wiederholtes lspci, nur RAM/Temp/Load).
-CPU-Temperatur ist ehrlich gesagt nur auf Linux zuverlässig auslesbar (sysfs thermal-zones) – auf Windows/macOS zeigt's sauber "nicht auslesbar" statt einen falschen Wert zu erfinden. cpuLoadPercent genauso: auf Windows liefert os.loadavg() grundsätzlich Unsinn (immer [0,0,0]), da zeigt's ebenfalls ehrlich "nicht messbar" statt einer Fake-Zahl.
-
-* **Scan System Bug:**
-Wurde im Backend behoben.
-
-### 2.6.1
-* **Problem:**
-Agent-Toggle in der UI schickt zwar agentMode mit, aber das Backend liest es nie. handleAgent baut immer den vollen Agent-System-Prompt + alle 4 Tool-Definitionen, egal was man im UI einstellt. Bei openai/gpt-oss-20b mit nur 8000 TPM Free-Tier-Limit reißt das sofort das Limit – auf der Groq-Console selbst schickst man ja nur den nackten Prompt, ohne den ganzen Agent-Overhead.
-
-* **Handle Agent Problem gelöst:** handleAgent() bekommt jetzt einen echten agentMode-Parameter, msg.agentMode aus dem Frontend wird tatsächlich durchgereicht (vorher: totes Feld, nie gelesen).
-* **Agent AUS:** schlanker System-Prompt (ein Satz statt der ganzen Anleitung), keine Tools im Request (weder Groq noch Gemini) → massiv weniger Tokens.
-* **Agent AN:** alles wie gehabt, volle Agent-Logik + Tools.
-
-### 2.6.0
-* **Groq Agentic Chat:** 
-
-* **OPENAI_AGENT_TOOLS:** dieselben vier Tools (list_files, read_file, write_file, run_command) wie bei Gemini, aber im OpenAI-kompatiblen tools/function-Schema, das Groq erwartet.
-
-* **Groq-Pfad umgebaut:** statt einem einzelnen fetch-Call jetzt eine echte Agentic-Loop (max. 10 Turns, wie bei Gemini) – Modell bekommt Tools angeboten, tool_calls werden erkannt, über executeTool() ausgeführt (inkl. Diff-Anzeige vor write_file, Bestätigungs-Dialog wenn autoAccept aus ist), Ergebnis als role: 'tool'-Message zurück in den Verlauf.
-
-* **Filter-Bug gefixt:** fetchGroqModels() schließt jetzt auch orpheus, canopylabs, playai aus – die TTS-Modelle tauchen im Dropdown nicht mehr auf.
-
-### 2.5.0
-* **Groq Coding:** Einbindung von dem Groq SDK und allen Groq Modellen in das Modell Menü im Chatmodul
-* **Vorbereitung der System auslesung (Hardware)** In der nächsten Revision wird der Hardware scan angepasst für Lokale Modelle
-
-### 2.4.0
-* **Projektgenerator:** Neue Projekte können direkt aus VS Code mit Node.js, TypeScript, React/Vite oder Next.js erstellt werden.
-* **Automatische Umgebungserkennung:** Windows, macOS und Linux sowie die passenden npm-/npx-Executables und Standardpfade werden automatisch erkannt.
-* **Projektordner öffnen:** Nach erfolgreicher Erstellung öffnet die Extension den neuen Projektordner automatisch in VS Code.
-
-### 2.3.1
-* **Fix**: Bug Gemini API Key wird nun im VS Code Storage gespeichert
-
-### 2.3.0
-* **Chat-History & Persistent Storage:** Alle Chat-Nachrichten werden automatisch in SQLite gespeichert und können über den History-Drawer geladen werden.
-* **Strukturierte Chat-Ausgaben:** Vollständige Markdown-Unterstützung mit Headings (`# ## ###`), Code-Blöcken mit Syntax-Highlighting, Bullet-Listen und besserer visueller Struktur.
-* **Verbesserte Session-Verwaltung:** Jeder Chat hat eine eindeutige Session-ID, Nachrichten werden mit Timestamps versehen und Sessions lassen sich mit einem Klick wiederherstellen.
-* **Dashboard-Version-Anzeige:** Die aktuelle Extension-Version wird jetzt im Dashboard angezeigt.
-* **Trash-Funktion:** Chat-Sessions können einzeln aus der History gelöscht werden mit Delete-Button.
-
-### 2.2.2
-* **Fix**: Chat lebt wieder, war kurzzeitig nicht da wegen einem Bug. Das Problem mit den 2 API-Keys einmal in Settings und zum anderen in AI Engine. Dies habe ich nun behoben und mich dazu entschieden den API-KEY in die AI Engine zu platzieren. Dort gehört er auch von der Logik her hin.
-
-### 2.2.1
-* **Fix**: '/' gespeicherte Prompts sind wieder verfügbar
-
-### 2.2.0
-* **Agenten-Modus (Agentic Power):** Der Agent agiert autonom über Tool-Calls (`list_files`, `read_file`, `write_file`, `run_command`), nutzt ein Schritt-Limit von 10 Turns und führt Aktionen dynamisch aus.
-* **Visuelle Diff-Überwachung (Visual Diffing):** Vor dem Schreiben von Dateien wird über einen Provider (`gemini-diff://`) ein VS Code Diff-Fenster (Original ↔ Vorschlag) zur Prüfung geöffnet.
-* **Chat-History & Verlauf Steuerung:** Klappbarer History-Drawer direkt im Chat-Panel. Der Native Header-Button (`codingForever.openHistory`) fokussiert die Sidebar und toggelt den Verlauf global.
-* **Native VS Code Quick Fixes:** Integration über Code-Actions (Glühbirne bei Fehlern), um Fehlerstellen direkt an den Agenten zu übergeben.
-* **Header-Status-Badges:** Integrierte Live-Statusanzeigen (`Agent [ON]`, `Bypass [ON]`, `Accept [ON]`) in der oberen Leiste bei eingeklappter History.
-
-### 2.1.0
-* Kontextbasierte Prompt-Vorschläge je nach geöffneter Datei im Editor.
-* Konstruktive Planerstellung pro Projekt, Volumen und Aufgabenstellung.
-* Vollständiges UI-Redesign (Buttons, Switches, Dashboard-Optimierungen).
-* **Fix:** Behebung des Instanz-Crashes durch Umstellung von `acquireVsCodeApi()` auf den Singleton `vscodeApi.ts`.
-
-### 2.0.1
-* Initiale Veröffentlichung mit Sidebar, Dashboard und direktem Gemini-Support.
-* Einführung des **Prompt Managers** mit vordefinierten Prompts & Umstellung auf React-Frontend.
-* Lokale SQLite3-Datenbankanbindung für eigene Prompts.
-* Anbindung lokaler KI-Modelle (Ollama etc.) über die Einstellungen.
+Alle Änderungen stehen in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
 ## Preview
 
-### Overview
-![Chat](media/Chat.png)
-
 ### Dashboard
-![Dashboard](media/Dashboard.png)
+![Dashboard](https://raw.githubusercontent.com/peter1965p/coding-forever-gemini/master/media/Dashboard.png)
 
 ### Prompt Manager
-![Prompt Manager](media/PromptManager.png)
+![Prompt Manager](https://raw.githubusercontent.com/peter1965p/coding-forever-gemini/master/media/PromptManager.png)
 
 ### AI Engine
-![AI Engine](media/AIEngine.png)
+![AI Engine](https://raw.githubusercontent.com/peter1965p/coding-forever-gemini/master/media/AIEngine.png)
 
-### Global Settings
-![Einstellungen](media/Einstellungen.png)
+### Einstellungen
+![Einstellungen](https://raw.githubusercontent.com/peter1965p/coding-forever-gemini/master/media/Einstellungen.png)
+
+---
+
+## Lizenz
+
+MIT © Peter Päffgen

@@ -4,6 +4,62 @@ All notable changes to the "coding-forever" extension will be documented in this
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.9.0]
+
+Größtes Release seit 2.0 — der Chat hat jetzt ein Gedächtnis, streamt, lässt sich stoppen, und der Agent kann sein eigenes Ergebnis prüfen.
+
+### Behoben
+
+* **Der Chat hatte kein Gedächtnis.** Bei jeder Anfrage wurde der Verlauf neu aufgebaut (`contents = [{ role: 'user', ... }]`), in allen drei Provider-Pfaden. "Mach das nochmal, aber mit Fehlerbehandlung" konnte das Modell deshalb nicht verstehen — die Vorgängerantwort hat es nie gesehen. Die Nachrichten lagen längst in SQLite, wurden aber nie zurückgefüttert. Jetzt gehen die letzten 20 Nachrichten (einstellbar) als echter Gesprächskontext mit.
+* **"Einstellungen" löschte den Gemini-Key.** Die Seite wurde ohne Props gerendert und startete mit leerem Key-Feld; der Handler schrieb jedes Feld bedingungslos. Ein Klick auf "Speichern" — etwa nur um die Schriftart zu ändern — überschrieb den hinterlegten Key mit einem leeren String. Keys liegen jetzt in der SecretStorage und werden von dieser Seite gar nicht mehr angefasst.
+* **Zwei konkurrierende Key-Felder** ("Einstellungen" und "AI Engine") schrieben beide auf `geminiApiKey` und zeigten unterschiedliche Stände. Es gibt nur noch eins, unter "AI Engine".
+* **`chatFont` war eine Attrappe:** wurde gespeichert, injiziert — und nirgends benutzt. Die Einstellung wirkt jetzt tatsächlich auf den Chat, mit Live-Vorschau.
+* **Fehler im Message-Handler verschwanden** in einem `console.error`. Warf die Datenbank oder ein Tool, wartete das UI endlos auf eine Antwort, die nie kam. Jede Ausnahme landet jetzt sichtbar im Chat.
+* **Projektbezogene Prompt-Blöcke wurden nie zugeordnet:** der Prompt-Manager arbeitete mit `scope: 'project'` und `p.project`, die Datenbank mit `'workspace'` und `workspace`. Der Workspace-Filter blieb dadurch immer leer.
+* **Das Dashboard konnte nichts senden:** `handleSend` rief `acquireVsCodeApi()` ein zweites Mal auf, was im Webview eine Exception wirft.
+* **Dashboard-Statuskarten zeigten Fake-Daten** — "Bypass ON", "Auto-Accept Aktiv", "API-Key Hinterlegt" standen fest im Code, unabhängig von der echten Konfiguration. Dazu eine erfundene Log-Tabelle. Alles ersetzt durch echte Werte; die Tabelle zeigt jetzt die wirklich gespeicherten Chats.
+* **Dateiname im Diff-Titel** wurde mit `split('/')` ermittelt und zeigte unter Windows den ganzen Pfad.
+* **`diffContentStore` wuchs unbegrenzt:** jeder je vorgeschlagene Dateiinhalt blieb bis zum Schließen von VS Code im Speicher.
+* **Die Datenbank wurde bei jeder Chat-Nachricht komplett neu geschrieben.** Jetzt gebündelt, mit sofortigem Flush beim Deaktivieren.
+* Jede Session hieß "New Chat", was den Verlauf praktisch unbenutzbar machte. Titel werden jetzt nach dem ersten Austausch automatisch generiert.
+
+### Sicherheit
+
+* **API-Keys liegen in der SecretStorage** (OS-Keychain) statt im globalState, der als Klartext-JSON auf der Platte liegt. Bestehende Keys werden beim ersten Start automatisch migriert.
+* **Keys verlassen den Extension Host nicht mehr.** Vorher wurden alle vier Keys im Klartext als `window.INITIAL_AI_SETTINGS` in das Webview-HTML geschrieben, obwohl das Webview sie nie braucht. Jetzt bekommt es nur noch `hasGeminiKey: true`.
+* **CSP mit Nonce** statt `script-src 'unsafe-inline'`; alle in das HTML eingebetteten Werte werden korrekt escaped. Vorher konnte ein Anführungszeichen im Workspace-Namen das HTML zerlegen.
+* **Pfad-Schutz für die Agent-Tools:** `read_file`/`write_file` nahmen `path.join(root, args.path)` ungeprüft — ein Modell kam mit `../../.ssh/id_rsa` aus dem Workspace heraus. Jetzt wird jeder Pfad gegen die Workspace-Grenze geprüft, Symlinks eingeschlossen.
+* **Riskante Shell-Befehle werden immer bestätigt** (`rm -rf`, `sudo`, `dd`, Pipe-nach-Shell, `git push`, `npm publish`, Fork-Bomben …), auch bei aktivem Accept All. Abschaltbar über `codingForever.agent.confirmDangerousCommands`.
+* **Accept All ist nicht mehr standardmäßig an.** Vorher durfte das Modell ab Werk ohne Rückfrage schreiben und Befehle ausführen.
+
+### Neu
+
+* **Streaming.** Antworten erscheinen Wort für Wort, bei allen Anbietern (SSE bei Gemini/Groq/OpenAI/Claude, NDJSON bei Ollama). Vorher starrte man bei einem großen Modell 20 Sekunden auf ein stummes UI — ohne Lade-Indikator, und der Senden-Button ließ sich beliebig oft drücken.
+* **Stop-Button.** Läuft der Agent in eine Schleife, war man vorher 10 Schritte lang Zuschauer. Jetzt bricht ein Klick (oder `Coding Forever: Laufenden Agenten stoppen`) sofort ab, inklusive des laufenden HTTP-Requests.
+* **Claude und OpenAI funktionieren.** Die Key-Felder gab es schon, gelesen wurden sie nie — die Anfrage landete trotzdem bei Gemini. Beide sind jetzt vollwertige Anbieter mit eigenem Streaming und Tool-Calling.
+* **Vier neue Agent-Tools:**
+  * `edit_file` — Suchen/Ersetzen statt Vollüberschreiben. Spart massiv Tokens und verhindert, dass das Modell eine Datei nebenbei halb neu schreibt.
+  * `grep_workspace` — Regex-Suche mit Datei und Zeilennummer, statt erst 300 Dateien zu listen.
+  * `get_diagnostics` — der Agent sieht seine eigenen TypeScript-/ESLint-Fehler und bessert nach, bevor er sich fertig meldet.
+  * `git_diff` — uncommittete Änderungen, für Commit-Messages und Reviews.
+* **`run_command` liefert jetzt die Ausgabe zurück**, statt nur ins Terminal zu feuern. Der Agent kann Tests laufen lassen und das Ergebnis auswerten. Dauerläufer (dev-Server, watch) gehen mit `background=true` weiter ins Terminal.
+* **`@datei` im Chat-Eingabefeld** mit Autovervollständigung aus dem Workspace. Der angehängte Inhalt geht direkt mit, statt dass der Agent die richtige Datei selbst finden muss.
+* **"Auswahl an den Chat senden"** im Editor-Kontextmenü.
+* **Live-Modellliste für Gemini und Claude.** Bei Groq gab es das schon; Gemini hatte zwei fest verdrahtete IDs im Dropdown. Jetzt veraltet keine Liste mehr.
+* **Echtes Markdown-Rendering** über `react-markdown` + GFM: Tabellen, verschachtelte Listen, Inline-Code, Links, Blockquotes. Vorher lief das über einen handgeschriebenen Zeilen-Parser, der nichts davon kannte.
+* **Code-Blöcke mit Diff- und Übernehmen-Button** direkt am Block, statt einer Schaltfläche pro Nachricht.
+* **Theme-Treue.** Das Chat-UI hatte `#0b0f19`, `#111827` und Co. fest im Code und sah in hellen Themes wie ein Fremdkörper aus. Alle Farben kommen jetzt aus den VS-Code-Variablen, Orange bleibt als Akzent. Der Syntax-Highlighter wechselt mit.
+* **Neue Einstellungen:** `codingForever.agent.maxTurns`, `codingForever.agent.historyDepth`, `codingForever.agent.confirmDangerousCommands`.
+* **GPU-Erkennung auf Windows und macOS** (vorher nur Linux über `lspci`).
+
+### Intern
+
+* **Ein Agent-Loop statt drei.** Groq, Ollama und Gemini hatten je eine fast identische Turn-Schleife mit eigener Fehlerbehandlung — genau deshalb kam der `res.ok`-Fix aus 2.8.2 nur in einem der drei Pfade an. Jetzt gibt es ein `LlmProvider`-Interface mit fünf Implementierungen und einen gemeinsamen Loop.
+* `extension.ts` von 1.576 auf ~700 Zeilen heruntergebrochen: `providers/`, `agent/`, `system/`, `lib/`.
+* **35 Unit-Tests** für Pfad-Schutz, Command-Prüfung, Platzhalter, Mentions, Modell-Auflösung und die Message-Konvertierung aller Anbieter — laufen ohne VS-Code-Download über `npm test`.
+* Totes Gewicht raus: `src/pages/code.chat.ts` (204 Zeilen, von nirgends importiert), der ungenutzte globale `currentSessionId`, die Abhängigkeiten `@google/genai` und `groq-sdk` (beide installiert, beide nie importiert), der Beispiel-Test.
+* Screenshots werden nicht mehr mitgeliefert, sondern im README über GitHub-URLs eingebunden (~730 KB kleineres Paket).
+
 ## [2.8.2]
 
 * **Gemini-Fehler waren unsichtbar:** Im Gemini-Pfad wurde die HTTP-Antwort von Google nie auf Fehler geprüft (anders als bei Groq/Ollama). Schlug der Request fehl (falsche Modell-ID, Quota, kaputtes Tool-Schema...), kam nur ein nichtssagendes "Keine Antwort erhalten." an – die echte Fehlermeldung von Google ging verloren. Jetzt wird sie direkt angezeigt, inklusive Safety-Block-Grund, falls Google aus Sicherheitsgründen blockiert statt zu antworten.

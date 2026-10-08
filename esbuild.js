@@ -4,6 +4,7 @@ const path = require("path");
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
+const tests = process.argv.includes('--tests');
 
 /**
  * Plugin zum Kopieren der sql-wasm.wasm Datei nach dist/
@@ -51,7 +52,36 @@ const esbuildProblemMatcherPlugin = {
     },
 };
 
+/**
+ * Unit-Tests laufen ohne VS Code: das vscode-Modul wird durch einen Stub ersetzt,
+ * sodass sich Pfad-Schutz, Command-Pruefung und Provider-Konvertierung mit
+ * "node --test" direkt testen lassen.
+ */
+async function buildTests() {
+    const entryPoints = fs.readdirSync(path.join(__dirname, 'src', 'test', 'unit'))
+        .filter(file => file.endsWith('.test.ts'))
+        .map(file => path.join('src', 'test', 'unit', file));
+
+    await esbuild.build({
+        entryPoints,
+        bundle: true,
+        format: 'cjs',
+        platform: 'node',
+        target: 'node20',
+        outdir: 'out-test',
+        sourcemap: 'inline',
+        logLevel: 'warning',
+        alias: { vscode: path.join(__dirname, 'src', 'test', 'unit', 'vscodeStub.ts') }
+    });
+    console.log(`[tests] ${entryPoints.length} Test-Bundle(s) nach out-test/ gebaut`);
+}
+
 async function main() {
+    if (tests) {
+        await buildTests();
+        return;
+    }
+
     // 1. Build-Kontext für den Node.js Backend-Code (Extension Host)
     const extensionCtx = await esbuild.context({
         entryPoints: ['src/extension.ts'],

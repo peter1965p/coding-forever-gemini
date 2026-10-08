@@ -3,21 +3,17 @@
         "module": "Node16",
         "target": "ES2022",
         "jsx": "react-jsx",
-        "lib": [
-            "ES2022",
-            "DOM",
-            "DOM.Iterable"
-        ],
-        "types": [
-            "node",
-            "mocha"
-        ],
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "types": ["node"],
         "sourceMap": true,
         "rootDir": "src",
-        "strict": true, /* enable all strict type-checking options */
-        /* Additional Checks */
-        // "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
-        // "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
-        // "noUnusedParameters": true,  /* Report errors on unused parameters. */
-    }
+        "strict": true,
+        "noUnusedLocals": true,
+        "skipLibCheck": true
+    },
+    // Das Webview-Bundle wird separat geprüft (tsconfig.webview.json): es läuft im
+    // Browser-Kontext und nutzt ESM-only Pakete wie react-markdown, die sich mit
+    // der Node16-Modulauflösung des Extension Hosts nicht vertragen.
+    "include": ["src/**/*"],
+    "exclude": ["src/pages", "src/lib/vscodeApi.ts", "src/lib/theme.ts"]
 }

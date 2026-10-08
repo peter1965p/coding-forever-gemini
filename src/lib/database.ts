@@ -3,6 +3,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import initSqlJs, { Database } from 'sql.js';
 
+/** Sammelt Schreibvorgänge, damit nicht jede Nachricht die ganze Datei neu schreibt. */
+const SAVE_DEBOUNCE_MS = 400;
+
 export interface PromptBlock {
   id: string;
   label: string;
@@ -35,6 +38,7 @@ export class PromptDatabaseManager {
   private static instance: PromptDatabaseManager;
   private db: Database | null = null;
   private dbPath: string = '';
+  private saveTimer: NodeJS.Timeout | undefined;
 
   private constructor() {}
 
@@ -72,13 +76,44 @@ export class PromptDatabaseManager {
     this.initTables();
   }
 
+  /**
+   * sql.js hält die Datenbank im Speicher, persistiert wird immer die ganze Datei.
+   * Bei jeder Chat-Nachricht sofort zu schreiben wurde bei langen Verläufen spürbar,
+   * deshalb gebündelt mit kurzer Verzögerung – plus flush() beim Deaktivieren.
+   */
   private saveToDisk(): void {
     if (!this.db) {
       return;
     }
-    const data = this.db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(this.dbPath, buffer);
+    if (this.saveTimer) {
+      return;
+    }
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = undefined;
+      this.flush();
+    }, SAVE_DEBOUNCE_MS);
+  }
+
+  /** Schreibt sofort und synchron – für sofort sichtbare Änderungen und dispose(). */
+  public flush(): void {
+    if (!this.db) {
+      return;
+    }
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = undefined;
+    }
+    try {
+      fs.writeFileSync(this.dbPath, Buffer.from(this.db.export()));
+    } catch (error) {
+      console.error('Coding Forever: Datenbank konnte nicht geschrieben werden:', error);
+    }
+  }
+
+  public dispose(): void {
+    this.flush();
+    this.db?.close();
+    this.db = null;
   }
 
   private initTables(): void {
@@ -284,7 +319,7 @@ export class PromptDatabaseManager {
 
   public async addMessage(sessionId: string, sender: 'user' | 'assistant' | 'status', text: string): Promise<ChatMessage> {
     if (!this.db) {throw new Error("Database not initialized");}
-    const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const id = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     
     // Nachricht einfügen
     this.db.run(
@@ -339,6 +374,44 @@ export class PromptDatabaseManager {
       });
       return obj as ChatSession;
     });
+  }
+
+  /**
+   * Die letzten N Nachrichten einer Session, chronologisch.
+   * Grundlage für den Gesprächskontext: vorher lagen die Nachrichten zwar in
+   * der Datenbank, wurden aber nie an das Modell zurückgegeben.
+   */
+  public async getRecentMessages(sessionId: string, limit: number): Promise<ChatMessage[]> {
+    if (!this.db || limit <= 0) {return [];}
+    const sql = "SELECT id, session_id, sender, text, created_at FROM chat_messages "
+      + "WHERE session_id = ? AND sender IN ('user', 'assistant') "
+      + "ORDER BY rowid DESC LIMIT ?";
+    const res = this.db.exec(sql, [sessionId, limit]);
+    if (!res[0]) {return [];}
+
+    const columns = res[0].columns;
+    const rows = res[0].values.map((row) => {
+      const obj: any = {};
+      columns.forEach((col, idx) => { obj[col] = row[idx]; });
+      return obj as ChatMessage;
+    });
+    return rows.reverse();
+  }
+
+  public async getSession(sessionId: string): Promise<ChatSession | null> {
+    if (!this.db) {return null;}
+    const sql = "SELECT id, title, workspace, is_open, created_at, updated_at FROM chat_sessions WHERE id = ?";
+    const res = this.db.exec(sql, [sessionId]);
+    if (!res[0] || res[0].values.length === 0) {return null;}
+    const row = res[0].values[0];
+    return {
+      id: row[0] as string,
+      title: row[1] as string,
+      workspace: row[2] as string,
+      is_open: row[3] as number,
+      created_at: row[4] as string,
+      updated_at: row[5] as string
+    };
   }
 
   public async getSessionWithMessages(sessionId: string): Promise<{ session: ChatSession | null; messages: ChatMessage[] }> {
