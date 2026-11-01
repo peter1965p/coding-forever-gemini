@@ -122,18 +122,31 @@ export const HELP_TOPICS: HelpTopic[] = [
         icon: '⚡',
         title: 'Anbieter & Modelle',
         summary: 'Fünf Engines, ein Dropdown — und welche wofür taugt.',
-        keywords: ['gemini', 'groq', 'claude', 'openai', 'ollama', 'lokal', 'modell', 'key', 'token'],
+        keywords: ['gemini', 'groq', 'claude', 'openai', 'ollama', 'lokal', 'modell', 'key', 'token', 'remote', 'netzwerk', 'zweiter rechner', 'gpu server'],
         body: [
             { kind: 'table', head: ['Anbieter', 'Stärke', 'Key holen'], rows: [
                 ['Gemini', 'Großzügiges Gratis-Kontingent', 'aistudio.google.com/apikey'],
                 ['Groq', 'Sehr schnell, kostenloses Tier', 'console.groq.com/keys'],
                 ['Claude', 'Stark bei langen Agent-Läufen', 'console.anthropic.com'],
                 ['OpenAI', 'GPT- und o-Serie', 'platform.openai.com/api-keys'],
-                ['Ollama', 'Offline, kein Key nötig', '—']
+                ['Ollama', 'Eigene Modelle, kein Key nötig', '—']
             ] },
             { kind: 'text', text:
                 'Alle fünf streamen und beherrschen Werkzeuge. Welche Modelle verfügbar sind, wird '
                 + 'live beim Anbieter abgefragt — die Liste veraltet also nicht.' },
+            { kind: 'text', text:
+                '**Ollama kann mehrere Rechner.** Ist dein eigener zu schwach, trägst du einen stärkeren im '
+                + 'Netzwerk als weitere Instanz ein. Im **Dashboard** schaltest du jede Instanz mit einem Klick '
+                + 'ein oder aus; eingeschaltete erscheinen als eigene Gruppe im Modell-Dropdown '
+                + '(„Ollama · Gaming PC“).' },
+            { kind: 'list', items: [
+                'Auf dem anderen Rechner: `OLLAMA_HOST=0.0.0.0 ollama serve` und Port `11434` in der Firewall freigeben.',
+                'Hier unter *AI Engine → Ollama-Instanzen* die Adresse eintragen, z. B. `http://192.168.1.20:11434`.',
+                'Auch mit dem Befehl **Ollama-Instanzen umschalten** aus der Befehlspalette lassen sie sich wechseln.'
+            ] },
+            { kind: 'note', tone: 'warn', text:
+                'Die Verbindung zu einem Rechner im Netzwerk ist unverschlüsselt und ungeschützt. Nur in einem '
+                + 'Netz verwenden, dem du vertraust — und nie ungeschützt ins Internet freigeben.' },
             { kind: 'note', tone: 'info', text:
                 'Die Modell-Auswahl im Dropdown gilt. Es wird nie stillschweigend auf einen anderen '
                 + 'Anbieter umgeleitet; fehlt der Key, sagt die Fehlermeldung genau das.' }
@@ -143,7 +156,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         id: 'mcp',
         icon: '🔌',
         title: 'MCP-Server einrichten',
-        summary: 'Externe Werkzeuge: Dateisystem, GitHub, Datenbanken, Websuche.',
+        summary: 'Externe Werkzeuge: Dateisystem, GitHub, Datenbanken, Websuche. (ReVa/Ghidra: eigenes Thema)',
         keywords: ['model context protocol', 'server', 'npx', 'stdio', 'http', 'tools erweitern'],
         body: [
             { kind: 'text', text:
@@ -172,6 +185,68 @@ export const HELP_TOPICS: HelpTopic[] = [
             { kind: 'note', tone: 'warn', text:
                 'Ein MCP-Server ist ein Programm, das mit deinen Rechten auf deinem Rechner startet. '
                 + 'Trage nur Server ein, denen du vertraust.' }
+        ]
+    },
+    {
+        id: 'rea',
+        icon: '🔬',
+        title: 'Reverse Engineering mit ReVa (Ghidra)',
+        summary: 'Binärdateien von der KI analysieren lassen — über den ReVa-MCP-Server.',
+        keywords: [
+            'rea', 'reva', 'ghidra', 'reverse engineering', 'reverse engineering assistant',
+            'dekompilieren', 'decompile', 'binary', 'binärdatei', 'malware', 'disassembler'
+        ],
+        body: [
+            { kind: 'text', text:
+                '**ReVa** (Reverse Engineering Assistant) ist ein MCP-Server für **Ghidra**. Der Agent bekommt '
+                + 'damit viele kleine Werkzeuge, um ein geöffnetes Programm zu untersuchen: Funktionen auflisten, '
+                + 'dekompilieren, Querverweise verfolgen, Strings lesen — und Funktionen umbenennen oder kommentieren.' },
+            { kind: 'text', text: '**Vorbereitung**' },
+            { kind: 'list', items: [
+                'ReVa als Erweiterung in Ghidra installieren (Projektseite: github.com/cyberkaida/reverse-engineering-assistant).',
+                'Ghidra starten und ein **Projekt öffnen** — ReVa lauscht nur, solange Ghidra läuft. '
+                    + 'Standard ist `localhost` auf Port `8080`; der Port lässt sich in Ghidra ändern.'
+            ] },
+            { kind: 'text', text:
+                '**Einrichtung in Coding Forever** — unter *AI Engine → MCP Server* eintragen. '
+                + 'ReVa nutzt Streamable HTTP, also eine `url`:' },
+            { kind: 'code', code: JSON.stringify({
+                mcpServers: { reva: { url: 'http://localhost:8080/mcp/message' } }
+            }, null, 2) },
+            { kind: 'text', text:
+                'Statt der GUI-Variante gibt es einen **Headless-Modus** ohne Ghidra-Fenster. Dort startet der '
+                + 'Client einen Befehl; installiert wird er einmalig mit `uv tool install reverse-engineering-assistant`:' },
+            { kind: 'code', code: JSON.stringify({
+                mcpServers: { reva: { command: 'mcp-reva' } }
+            }, null, 2) },
+            { kind: 'text', text:
+                'Danach auf **Verbinden / Neu laden** klicken. Steht der Server mit grünem Punkt und seiner '
+                + 'Tool-Anzahl da, ist er bereit — im Chat erscheinen die Werkzeuge als `mcp__reva__…`.' },
+            { kind: 'text', text: '**Arbeiten damit**' },
+            { kind: 'list', items: [
+                '**Agent einschalten** — ohne Agent-Modus bekommt das Modell keine Werkzeuge.',
+                'Konkret fragen: „Welche Funktion verarbeitet die Netzwerk-Eingabe, und was macht sie?“ '
+                    + 'funktioniert besser als „analysiere das Programm“.',
+                'Die Analyse braucht viele Schritte. Stelle `codingForever.agent.maxTurns` auf **30 bis 40**; '
+                    + 'bei den voreingestellten 12 bricht der Agent mitten drin ab.',
+                'Mit **Accept All aus** fragt Coding Forever vor schreibenden Werkzeugen (Umbenennen, Kommentieren) '
+                    + 'einzeln nach — das schützt dein Ghidra-Projekt vor unbeabsichtigten Änderungen.'
+            ] },
+            { kind: 'table', head: ['Stolperstelle', 'Was hilft'], rows: [
+                ['Server bleibt rot',
+                    'Läuft Ghidra mit geöffnetem Projekt? Stimmt der Port? Details im *Protokoll*.'],
+                ['Antwort bricht ab oder wirkt abgeschnitten',
+                    'Werkzeug-Ergebnisse über 24.000 Zeichen werden gekürzt — große Funktionen ggf. in Teilen abfragen lassen.'],
+                ['Fehler wegen Token-Limit oder „zu viele Tools“',
+                    'ReVa bringt viele Werkzeuge mit, die bei jeder Anfrage mitgehen. Kleine Gratis-Kontingente '
+                    + '(z. B. Groq mit `gpt-oss-20b`) stoßen schnell an die Grenze; Gemini oder Claude kommen damit besser zurecht.'],
+                ['Ein Werkzeug dauert sehr lange',
+                    'Ein Aufruf bricht nach 120 Sekunden ab. Bei großen Binärdateien die Frage enger fassen.']
+            ] },
+            { kind: 'note', tone: 'warn', text:
+                'ReVa lauscht standardmäßig nur auf `localhost`. Wer es für andere Rechner öffnet, sollte die '
+                + 'Authentifizierung per API-Key von ReVa aktivieren — die Header dafür lassen sich in der '
+                + 'Server-Konfiguration unter `headers` mitgeben.' }
         ]
     },
     {
@@ -210,6 +285,7 @@ export const HELP_TOPICS: HelpTopic[] = [
                 ['MCP-Server neu verbinden', 'Startet die konfigurierten Server neu'],
                 ['Protokoll anzeigen', 'Ausgabekanal mit den MCP-Meldungen'],
                 ['Node-Projekt erstellen', 'Node, TypeScript, React/Vite oder Next.js'],
+                ['Ollama-Instanzen umschalten', 'Wählt, welche Ollama-Rechner aktiv sind'],
                 ['Nach Updates suchen', 'Prüft das neueste GitHub-Release']
             ] },
             { kind: 'text', text:
@@ -277,6 +353,8 @@ export const HELP_TOPICS: HelpTopic[] = [
                     '*Protokoll* öffnen. Meist fehlt das Paket (`npx -y` davor) oder eine Variable in `env`.'],
                 ['Modell-Liste bleibt leer',
                     'Key falsch oder kein Netz. Bei Ollama prüfen, ob `ollama serve` läuft.'],
+                ['Ollama-Rechner „nicht erreichbar“',
+                    'Bei einem anderen Rechner muss Ollama mit `OLLAMA_HOST=0.0.0.0` laufen und Port `11434` in der Firewall offen sein. Erreichbarkeit prüft das Dashboard.'],
                 ['Chat zu groß oder zu klein',
                     '*Einstellungen* → Größe. Der Regler skaliert Text und Abstände gemeinsam.']
             ] },

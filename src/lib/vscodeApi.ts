@@ -8,10 +8,25 @@ declare function acquireVsCodeApi(): {
 
 export const vscode = acquireVsCodeApi();
 
+export interface OllamaInstance {
+    id: string;
+    name: string;
+    url: string;
+    enabled: boolean;
+}
+
+/** Ergebnis des Statuschecks einer Ollama-Instanz. */
+export interface OllamaStatus {
+    id: string;
+    reachable: boolean;
+    latencyMs?: number;
+    modelCount?: number;
+    version?: string;
+    error?: string;
+}
+
 export interface PublicSettings {
-    localEnabled: boolean;
-    baseUrl: string;
-    modelName: string;
+    ollamaInstances: OllamaInstance[];
     mcpConfig: string;
     userName: string;
     chatFont: string;
@@ -38,9 +53,7 @@ const FALLBACK: Bootstrap = {
     workspaceName: 'Global',
     osUser: '',
     settings: {
-        localEnabled: false,
-        baseUrl: 'http://localhost:11434',
-        modelName: 'llama3.2',
+        ollamaInstances: [],
         mcpConfig: '',
         userName: '',
         chatFont: 'var(--vscode-font-family)',
@@ -67,12 +80,30 @@ export interface ModelInfo {
 
 export interface ModelGroup {
     providerId: 'gemini' | 'groq' | 'openai' | 'claude' | 'local';
+    /** Nur bei Ollama: zu welcher Instanz die Gruppe gehört. */
+    instanceId?: string;
     label: string;
     models: ModelInfo[];
     hint?: string;
 }
 
 /** Präfix, mit dem eine Modell-ID an die Extension geschickt wird. */
-export function qualifyModelId(providerId: ModelGroup['providerId'], id: string): string {
-    return providerId === 'gemini' ? id : `${providerId}:${id}`;
+export function qualifyModelId(
+    group: Pick<ModelGroup, 'providerId' | 'instanceId'>,
+    id: string
+): string {
+    if (group.providerId === 'gemini') { return id; }
+    // Ollama: die Instanz gehört in die ID, sonst weiß die Extension nicht, welcher Rechner gemeint ist.
+    if (group.providerId === 'local') { return `ollama:${group.instanceId ?? 'lokal'}:${id}`; }
+    return `${group.providerId}:${id}`;
+}
+
+/** Eindeutiger React-Schlüssel einer Gruppe — mehrere Ollama-Gruppen teilen sich die providerId. */
+export function groupKey(group: Pick<ModelGroup, 'providerId' | 'instanceId'>): string {
+    return group.instanceId ? `${group.providerId}:${group.instanceId}` : group.providerId;
+}
+
+/** Ob mindestens eine Ollama-Instanz eingeschaltet ist. */
+export function hasActiveOllama(settings: PublicSettings): boolean {
+    return settings.ollamaInstances.some(instance => instance.enabled);
 }

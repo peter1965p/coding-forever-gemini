@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { bootstrap, ModelGroup, PublicSettings, vscode } from '../lib/vscodeApi';
+import { bootstrap, ModelGroup, OllamaStatus, PublicSettings, vscode } from '../lib/vscodeApi';
 import { PAGE_CSS } from './Settings';
 import { HelpBlock, HelpTopic, searchHelp } from './helpContent';
 
@@ -125,6 +125,7 @@ export const Help: React.FC = () => {
     const [settings, setSettings] = useState<PublicSettings>(bootstrap.settings);
     const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
     const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+    const [ollamaStatus, setOllamaStatus] = useState<Record<string, OllamaStatus>>({});
     const [query, setQuery] = useState('');
     const [openId, setOpenId] = useState<string | null>('schnellstart');
 
@@ -132,12 +133,18 @@ export const Help: React.FC = () => {
         vscode.postMessage({ type: 'requestSettings' });
         vscode.postMessage({ type: 'getModels' });
         vscode.postMessage({ type: 'getMcpStatus' });
+        vscode.postMessage({ type: 'checkOllama' });
 
         const handleMessage = (event: MessageEvent) => {
             const message = event.data;
             if (message.type === 'settings') { setSettings(message.settings); }
             else if (message.type === 'modelsLoaded') { setModelGroups(message.groups || []); }
             else if (message.type === 'mcpStatus') { setMcpServers(message.servers || []); }
+            else if (message.type === 'ollamaStatus') {
+                const next: Record<string, OllamaStatus> = {};
+                for (const status of message.statuses || []) { next[status.id] = status; }
+                setOllamaStatus(next);
+            }
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
@@ -158,7 +165,8 @@ export const Help: React.FC = () => {
             ['Claude', settings.hasClaudeKey],
             ['OpenAI', settings.hasOpenaiKey]
         ].filter(([, has]) => has).map(([name]) => name as string);
-        if (settings.localEnabled) { providers.push('Ollama'); }
+        const activeOllama = settings.ollamaInstances.filter(instance => instance.enabled);
+        for (const instance of activeOllama) { providers.push(`Ollama · ${instance.name}`); }
 
         const modelCount = modelGroups.reduce((sum, group) => sum + group.models.length, 0);
 
@@ -188,6 +196,20 @@ export const Help: React.FC = () => {
             list.push({ level: 'ok', label: `${modelCount} Modelle verfügbar`, detail: 'Live beim Anbieter abgefragt.' });
         }
 
+        // Ein eingeschalteter Ollama-Rechner, der nicht antwortet, ist der häufigste Fehler bei Remote-Setups.
+        const unreachable = activeOllama.filter(instance => ollamaStatus[instance.id]?.reachable === false);
+        if (unreachable.length > 0) {
+            list.push({
+                level: 'warn',
+                label: `${unreachable.length} Ollama-Instanz${unreachable.length === 1 ? '' : 'en'} nicht erreichbar`,
+                detail: unreachable
+                    .map(instance => `${instance.name}: ${ollamaStatus[instance.id]?.error ?? 'keine Antwort'}`)
+                    .join(' · ')
+                    + ' — läuft dort "ollama serve", bei einem anderen Rechner mit OLLAMA_HOST=0.0.0.0?',
+                action: { label: 'Neu prüfen', message: { type: 'checkOllama' } }
+            });
+        }
+
         const failed = mcpServers.filter(server => server.state === 'error');
         const connected = mcpServers.filter(server => server.state === 'connected');
         if (failed.length > 0) {
@@ -214,7 +236,7 @@ export const Help: React.FC = () => {
         }
 
         return list;
-    }, [settings, modelGroups, mcpServers]);
+    }, [settings, modelGroups, mcpServers, ollamaStatus]);
 
     const worst: CheckLevel = checks.some(c => c.level === 'error')
         ? 'error'

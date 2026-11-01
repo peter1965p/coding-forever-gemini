@@ -12,7 +12,7 @@ import { resolveModel, ProviderCredentials } from '../../providers';
 
 const EMPTY_CREDS: ProviderCredentials = {
     geminiApiKey: '', groqApiKey: '', openaiApiKey: '', claudeApiKey: '',
-    localEnabled: false, localBaseUrl: 'http://localhost:11434'
+    ollamaInstances: []
 };
 
 /** Ein Verlauf mit Tool-Aufruf und zwei Ergebnissen aus demselben Schritt. */
@@ -160,10 +160,14 @@ describe('resolveModel', () => {
         );
     });
 
-    it('erhaelt Doppelpunkte in lokalen Modellnamen', () => {
-        const resolved = resolveModel('local:qwen2.5-coder:7b', { ...EMPTY_CREDS, localEnabled: true });
+    it('erhaelt Doppelpunkte in lokalen Modellnamen (alte local:-Auswahl)', () => {
+        const resolved = resolveModel('local:qwen2.5-coder:7b', {
+            ...EMPTY_CREDS,
+            ollamaInstances: [{ id: 'lokal', name: 'Lokal', url: 'http://localhost:11434', enabled: true }]
+        });
         assert.equal(resolved.providerId, 'local');
         assert.equal(resolved.model, 'qwen2.5-coder:7b');
+        assert.equal(resolved.instanceId, 'lokal');
     });
 });
 

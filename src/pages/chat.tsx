@@ -20,7 +20,9 @@ import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
 import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
 import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml';
 
-import { bootstrap, ModelGroup, PublicSettings, qualifyModelId, vscode } from '../lib/vscodeApi';
+import {
+    bootstrap, groupKey, hasActiveOllama, ModelGroup, PublicSettings, qualifyModelId, vscode
+} from '../lib/vscodeApi';
 import { isLightTheme, THEME_CSS } from '../lib/theme';
 
 SyntaxHighlighter.registerLanguage('tsx', tsx);
@@ -342,7 +344,7 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
     useEffect(() => {
         if (modelGroups.length === 0) { return; }
         const available = modelGroups.flatMap(group =>
-            group.models.map(model => qualifyModelId(group.providerId, model.id))
+            group.models.map(model => qualifyModelId(group, model.id))
         );
         if (available.length === 0 || available.includes(selectedModel)) { return; }
         setSelectedModel(available[0]);
@@ -475,7 +477,7 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
     // Ohne Anbieter läuft gar nichts — dann lieber einen Weg nach vorn zeigen
     // als den Nutzer gegen eine Fehlermeldung laufen lassen.
     const hasAnyProvider = settings.hasGeminiKey || settings.hasGroqKey
-        || settings.hasClaudeKey || settings.hasOpenaiKey || settings.localEnabled;
+        || settings.hasClaudeKey || settings.hasOpenaiKey || hasActiveOllama(settings);
 
     return (
         <div
@@ -615,11 +617,11 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
                         onChange={event => setSelectedModel(event.target.value)}>
                         {!hasAnyModel && <option value="gemini-3.6-flash">Lade Modelle...</option>}
                         {modelGroups.map(group => (
-                            <optgroup key={group.providerId}
+                            <optgroup key={groupKey(group)}
                                 label={group.hint ? `${group.label} — ${group.hint}` : group.label}>
                                 {group.models.map(model => (
-                                    <option key={`${group.providerId}:${model.id}`}
-                                        value={qualifyModelId(group.providerId, model.id)}>
+                                    <option key={`${groupKey(group)}:${model.id}`}
+                                        value={qualifyModelId(group, model.id)}>
                                         {model.id}
                                     </option>
                                 ))}

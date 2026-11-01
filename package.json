@@ -2,7 +2,7 @@
     "name": "coding-forever",
     "displayName": "Coding Forever",
     "description": "Agentischer KI-Chat in VS Code: Gemini, Groq, Claude, OpenAI und lokale Ollama-Modelle — mit MCP-Servern, Streaming, Datei-Tools und Diff-Kontrolle.",
-    "version": "3.0.0",
+    "version": "3.0.1",
     "publisher": "PeterPaeffgen",
     "author": {
         "name": "Peter Päffgen",
@@ -112,6 +112,12 @@
                 "category": "Coding Forever",
                 "title": "Protokoll anzeigen",
                 "icon": "$(output)"
+            },
+            {
+                "command": "coding-forever.switchOllama",
+                "category": "Coding Forever",
+                "title": "Ollama-Instanzen umschalten",
+                "icon": "$(server)"
             },
             {
                 "command": "codingForever.openHistory",

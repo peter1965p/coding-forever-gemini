@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { bootstrap, ModelGroup, PublicSettings, qualifyModelId, vscode } from '../lib/vscodeApi';
+import {
+    bootstrap, groupKey, hasActiveOllama, ModelGroup, OllamaStatus, PublicSettings, qualifyModelId, vscode
+} from '../lib/vscodeApi';
 
 interface SystemSpecs {
     cpuModel: string;
@@ -49,6 +51,8 @@ export const Dashboard: React.FC = () => {
     const [specs, setSpecs] = useState<SystemSpecs | null>(null);
     const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
     const [sessions, setSessions] = useState<SessionRow[]>([]);
+    const [ollamaStatus, setOllamaStatus] = useState<Record<string, OllamaStatus>>({});
+    const [ollamaChecking, setOllamaChecking] = useState(false);
     const [selectedModel, setSelectedModel] = useState('gemini-3.6-flash');
     const [promptText, setPromptText] = useState('');
     const [responseText, setResponseText] = useState('Bereit für Anfragen.');
@@ -75,6 +79,13 @@ export const Dashboard: React.FC = () => {
                 case 'historyLoaded':
                     setSessions(message.sessions || []);
                     break;
+                case 'ollamaStatus': {
+                    const next: Record<string, OllamaStatus> = {};
+                    for (const status of message.statuses || []) { next[status.id] = status; }
+                    setOllamaStatus(next);
+                    setOllamaChecking(false);
+                    break;
+                }
                 case 'assistantStart':
                     setResponseText('');
                     break;
@@ -100,6 +111,7 @@ export const Dashboard: React.FC = () => {
         vscode.postMessage({ type: 'scanSystem' });
         vscode.postMessage({ type: 'getModels' });
         vscode.postMessage({ type: 'loadHistory' });
+        vscode.postMessage({ type: 'checkOllama' });
 
         // Nur die leichten Live-Werte nachziehen — kein erneuter GPU-/OS-Scan.
         const interval = setInterval(() => vscode.postMessage({ type: 'scanLiveStats' }), 4000);
@@ -113,7 +125,7 @@ export const Dashboard: React.FC = () => {
     useEffect(() => {
         if (modelGroups.length === 0) { return; }
         const available = modelGroups.flatMap(group =>
-            group.models.map(model => qualifyModelId(group.providerId, model.id))
+            group.models.map(model => qualifyModelId(group, model.id))
         );
         if (available.length > 0 && !available.includes(selectedModel)) {
             setSelectedModel(available[0]);
@@ -124,7 +136,7 @@ export const Dashboard: React.FC = () => {
         () => [
             settings.hasGeminiKey, settings.hasGroqKey,
             settings.hasClaudeKey, settings.hasOpenaiKey
-        ].filter(Boolean).length + (settings.localEnabled ? 1 : 0),
+        ].filter(Boolean).length + settings.ollamaInstances.filter(instance => instance.enabled).length,
         [settings]
     );
 
@@ -244,13 +256,19 @@ export const Dashboard: React.FC = () => {
                     </div>
                 </div>
                 <div className="db-card">
-                    <div className="db-metric-label">Lokale Modelle</div>
+                    <div className="db-metric-label">Ollama</div>
                     <div className="db-big" style={{
-                        color: settings.localEnabled ? 'var(--cf-success)' : 'var(--cf-fg-muted)'
+                        color: hasActiveOllama(settings) ? 'var(--cf-success)' : 'var(--cf-fg-muted)'
                     }}>
-                        {settings.localEnabled ? 'Aktiv' : 'Aus'}
+                        {hasActiveOllama(settings)
+                            ? `${settings.ollamaInstances.filter(i => i.enabled).length} aktiv`
+                            : 'Aus'}
                     </div>
-                    <div className="db-muted">{settings.localEnabled ? settings.baseUrl : 'Ollama deaktiviert'}</div>
+                    <div className="db-muted">
+                        {settings.ollamaInstances.length === 0
+                            ? 'Keine Instanz eingerichtet'
+                            : `von ${settings.ollamaInstances.length} Instanz${settings.ollamaInstances.length === 1 ? '' : 'en'}`}
+                    </div>
                 </div>
                 <div className="db-card">
                     <div className="db-metric-label">Workspace</div>
@@ -258,6 +276,78 @@ export const Dashboard: React.FC = () => {
                     <div className="db-muted">{sessions.length} gespeicherte Chats</div>
                 </div>
             </div>
+
+            <section className="db-card">
+                <div className="db-card-title">
+                    Ollama-Instanzen
+                    <span style={{ display: 'flex', gap: '6px' }}>
+                        <button className="db-btn db-btn-small" disabled={ollamaChecking}
+                            onClick={() => { setOllamaChecking(true); vscode.postMessage({ type: 'checkOllama' }); }}>
+                            {ollamaChecking ? 'Prüfe...' : 'Prüfen'}
+                        </button>
+                        <button className="db-btn db-btn-small"
+                            onClick={() => vscode.postMessage({ type: 'openSettings' })}>
+                            Verwalten
+                        </button>
+                    </span>
+                </div>
+
+                {settings.ollamaInstances.length === 0 ? (
+                    <div className="db-muted">
+                        Noch keine Instanz. Unter <strong>AI Engine</strong> den eigenen Rechner oder
+                        einen stärkeren im Netzwerk eintragen.
+                    </div>
+                ) : (
+                    <div className="db-instances">
+                        {settings.ollamaInstances.map(instance => {
+                            const status = ollamaStatus[instance.id];
+                            const state = !instance.enabled ? 'off'
+                                : !status ? 'unknown'
+                                : status.reachable ? 'ok' : 'down';
+
+                            return (
+                                <div key={instance.id} className={`db-instance ${state}`}>
+                                    <label className="db-switch" title={instance.enabled ? 'Ausschalten' : 'Einschalten'}>
+                                        <input
+                                            type="checkbox"
+                                            checked={instance.enabled}
+                                            onChange={event => vscode.postMessage({
+                                                type: 'setOllamaInstanceEnabled',
+                                                id: instance.id,
+                                                enabled: event.target.checked
+                                            })}
+                                        />
+                                        <span />
+                                    </label>
+
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                        <div className="db-instance-name">{instance.name}</div>
+                                        <div className="db-muted">{instance.url}</div>
+                                    </div>
+
+                                    <div className="db-instance-state">
+                                        {state === 'off' && <span className="db-muted">aus</span>}
+                                        {state === 'unknown' && <span className="db-muted">prüfe...</span>}
+                                        {state === 'ok' && (
+                                            <span title={status?.version ? `Ollama ${status.version}` : undefined}>
+                                                <span className="db-dot ok" /> {status?.modelCount ?? 0} Modelle
+                                                {status?.latencyMs !== undefined && (
+                                                    <span className="db-muted"> · {status.latencyMs} ms</span>
+                                                )}
+                                            </span>
+                                        )}
+                                        {state === 'down' && (
+                                            <span title={status?.error} style={{ color: 'var(--cf-danger)' }}>
+                                                <span className="db-dot down" /> nicht erreichbar
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </section>
 
             <div className="db-split">
                 <section className="db-card">
@@ -271,10 +361,10 @@ export const Dashboard: React.FC = () => {
                         onChange={e => setSelectedModel(e.target.value)}>
                         {modelCount === 0 && <option value="gemini-3.6-flash">Lade Modelle...</option>}
                         {modelGroups.map(group => (
-                            <optgroup key={group.providerId} label={group.label}>
+                            <optgroup key={groupKey(group)} label={group.hint && group.models.length === 0 ? `${group.label} — ${group.hint}` : group.label}>
                                 {group.models.map(model => (
-                                    <option key={`${group.providerId}:${model.id}`}
-                                        value={qualifyModelId(group.providerId, model.id)}>
+                                    <option key={`${groupKey(group)}:${model.id}`}
+                                        value={qualifyModelId(group, model.id)}>
                                         {model.id}
                                     </option>
                                 ))}
@@ -362,6 +452,33 @@ const DASHBOARD_CSS = `
     background: var(--cf-bg-elev); border: 1px solid var(--cf-border);
     border-radius: 8px; padding: 16px 18px; margin-bottom: 18px; box-sizing: border-box;
 }
+.db-btn-small { padding: 4px 10px; font-size: 11px; font-weight: 500; }
+.db-instances { display: flex; flex-direction: column; gap: 8px; }
+.db-instance {
+    display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 6px;
+    background: var(--cf-bg); border: 1px solid var(--cf-border);
+}
+.db-instance.ok { border-color: var(--cf-success); }
+.db-instance.down { border-color: var(--cf-danger); }
+.db-instance.off { opacity: 0.7; }
+.db-instance-name { font-size: 13px; font-weight: 600; }
+.db-instance-state { font-size: 11.5px; white-space: nowrap; text-align: right; }
+.db-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 2px; }
+.db-dot.ok { background: var(--cf-success); }
+.db-dot.down { background: var(--cf-danger); }
+.db-switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; cursor: pointer; }
+.db-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.db-switch span {
+    position: absolute; inset: 0; border-radius: 22px;
+    background: var(--cf-border-strong); transition: background .2s;
+}
+.db-switch span::before {
+    content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .2s;
+}
+.db-switch input:checked + span { background: var(--cf-success); }
+.db-switch input:checked + span::before { transform: translateX(16px); }
+.db-switch input:focus-visible + span { outline: 2px solid var(--cf-accent); outline-offset: 2px; }
 .db-card-title {
     display: flex; justify-content: space-between; align-items: center; gap: 10px;
     font-size: 13px; font-weight: 600; margin-bottom: 12px;

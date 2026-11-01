@@ -56,6 +56,26 @@ describe('searchHelp', () => {
         assert.ok(searchHelp('shortcut').some(topic => topic.id === 'befehle'));
     });
 
+    it('findet die Ollama-Netzwerk-Hilfe ueber verschiedene Begriffe', () => {
+        for (const term of ['remote', 'netzwerk', 'OLLAMA_HOST', 'zweiter rechner']) {
+            assert.ok(searchHelp(term).some(topic => topic.id === 'anbieter'), `"${term}" findet die Anbieter-Hilfe nicht`);
+        }
+        assert.ok(searchHelp('nicht erreichbar').some(topic => topic.id === 'probleme'));
+    });
+
+    it('findet die ReVa-Anleitung ueber ihre Begriffe', () => {
+        for (const term of ['reva', 'ghidra', 'rea', 'reverse engineering', 'dekompilieren']) {
+            assert.ok(searchHelp(term).some(topic => topic.id === 'rea'), `"${term}" findet die ReVa-Anleitung nicht`);
+        }
+    });
+
+    it('nennt in der ReVa-Anleitung Endpunkt und Headless-Befehl', () => {
+        const topic = HELP_TOPICS.find(entry => entry.id === 'rea')!;
+        const text = topic.body.map(blockText).join(' ');
+        assert.ok(text.includes('http://localhost:8080/mcp/message'));
+        assert.ok(text.includes('mcp-reva'));
+    });
+
     it('findet ueber den Fliesstext', () => {
         assert.ok(searchHelp('quota').some(topic => topic.id === 'probleme'));
         assert.ok(searchHelp('symlink').some(topic => topic.id === 'sicherheit'));

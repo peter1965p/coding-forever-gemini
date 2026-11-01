@@ -1,13 +1,15 @@
 import * as vscode from 'vscode';
 import { ProviderCredentials } from '../providers';
+import {
+    DEFAULT_OLLAMA_URL, normalizeInstances, OllamaInstance
+} from '../providers/ollama';
 
 export const API_KEY_NAMES = ['geminiApiKey', 'groqApiKey', 'claudeApiKey', 'openaiApiKey'] as const;
 export type ApiKeyName = typeof API_KEY_NAMES[number];
 
 export interface Preferences {
-    localEnabled: boolean;
-    baseUrl: string;
-    modelName: string;
+    /** Konfigurierte Ollama-Server; jeder einzeln ein- und ausschaltbar. */
+    ollamaInstances: OllamaInstance[];
     mcpConfig: string;
     userName: string;
     chatFont: string;
@@ -28,10 +30,13 @@ export interface PublicSettings extends Preferences {
     hasOpenaiKey: boolean;
 }
 
+/** Eine Instanz für den eigenen Rechner, ausgeschaltet — damit es sofort etwas zum Umlegen gibt. */
+export const DEFAULT_OLLAMA_INSTANCES: OllamaInstance[] = [
+    { id: 'lokal', name: 'Dieser Rechner', url: DEFAULT_OLLAMA_URL, enabled: false }
+];
+
 const PREFERENCE_DEFAULTS: Preferences = {
-    localEnabled: false,
-    baseUrl: 'http://localhost:11434',
-    modelName: 'llama3.2',
+    ollamaInstances: DEFAULT_OLLAMA_INSTANCES,
     mcpConfig: '',
     userName: '',
     chatFont: 'var(--vscode-font-family)',
@@ -59,6 +64,32 @@ export class SettingsStore {
         }
     }
 
+    /**
+     * Übernimmt die frühere Einzel-Instanz (localEnabled/baseUrl) als ersten Eintrag der
+     * neuen Liste. Wer Ollama schon eingerichtet hatte, behält Adresse und Schalterstellung.
+     */
+    async migrateOllama(): Promise<void> {
+        const state = this.context.globalState;
+        if (state.get<unknown>('ollamaInstances') !== undefined) { return; }
+
+        const legacyUrl = state.get<string>('baseUrl');
+        const legacyEnabled = state.get<boolean>('localEnabled');
+
+        if (legacyUrl || legacyEnabled !== undefined) {
+            const migrated = normalizeInstances([{
+                id: 'lokal',
+                name: 'Dieser Rechner',
+                url: legacyUrl || DEFAULT_OLLAMA_URL,
+                enabled: legacyEnabled === true
+            }]);
+            await state.update('ollamaInstances', migrated.length > 0 ? migrated : DEFAULT_OLLAMA_INSTANCES);
+        }
+
+        for (const key of ['baseUrl', 'localEnabled', 'modelName']) {
+            if (state.get(key) !== undefined) { await state.update(key, undefined); }
+        }
+    }
+
     async getKey(name: ApiKeyName): Promise<string> {
         return (await this.context.secrets.get(name)) || '';
     }
@@ -73,14 +104,17 @@ export class SettingsStore {
 
     getPreferences(): Preferences {
         const state = this.context.globalState;
+        const stored = state.get<unknown>('ollamaInstances');
+
         return {
-            localEnabled: state.get<boolean>('localEnabled') ?? PREFERENCE_DEFAULTS.localEnabled,
-            baseUrl: state.get<string>('baseUrl') || PREFERENCE_DEFAULTS.baseUrl,
-            modelName: state.get<string>('modelName') || PREFERENCE_DEFAULTS.modelName,
+            // Eine absichtlich geleerte Liste bleibt leer; nur "nie gesetzt" bekommt den Standard.
+            ollamaInstances: stored === undefined
+                ? PREFERENCE_DEFAULTS.ollamaInstances
+                : normalizeInstances(stored),
             mcpConfig: state.get<string>('mcpConfig') ?? PREFERENCE_DEFAULTS.mcpConfig,
             userName: state.get<string>('userName') ?? PREFERENCE_DEFAULTS.userName,
             chatFont: state.get<string>('chatFont') || PREFERENCE_DEFAULTS.chatFont,
-            chatFontSize: Math.max(9, Math.min(20,
+            chatFontSize: Math.max(9, Math.min(18,
                 state.get<number>('chatFontSize') ?? PREFERENCE_DEFAULTS.chatFontSize))
         };
     }
@@ -93,8 +127,19 @@ export class SettingsStore {
     async updatePreferences(partial: Partial<Preferences>): Promise<void> {
         for (const [key, value] of Object.entries(partial)) {
             if (value === undefined) { continue; }
-            await this.context.globalState.update(key, value);
+            // Das Webview ist nicht vertrauenswürdig genug, um die Liste roh zu speichern.
+            const clean = key === 'ollamaInstances' ? normalizeInstances(value) : value;
+            await this.context.globalState.update(key, clean);
         }
+    }
+
+    /** Schaltet eine Instanz um und liefert die neue Liste zurück. */
+    async setOllamaInstanceEnabled(id: string, enabled: boolean): Promise<OllamaInstance[]> {
+        const next = this.getPreferences().ollamaInstances.map(
+            instance => instance.id === id ? { ...instance, enabled } : instance
+        );
+        await this.updatePreferences({ ollamaInstances: next });
+        return next;
     }
 
     async getPublicSettings(): Promise<PublicSettings> {
@@ -111,7 +156,6 @@ export class SettingsStore {
     }
 
     async getCredentials(): Promise<ProviderCredentials> {
-        const prefs = this.getPreferences();
         const [geminiApiKey, groqApiKey, claudeApiKey, openaiApiKey] = await Promise.all(
             API_KEY_NAMES.map(name => this.getKey(name))
         );
@@ -120,20 +164,8 @@ export class SettingsStore {
             groqApiKey,
             claudeApiKey,
             openaiApiKey,
-            localEnabled: prefs.localEnabled,
-            localBaseUrl: prefs.baseUrl
+            ollamaInstances: this.getPreferences().ollamaInstances
         };
-    }
-
-    /** Das erste Modell, für das ein Key hinterlegt ist. */
-    async getDefaultModel(): Promise<string> {
-        const creds = await this.getCredentials();
-        if (creds.geminiApiKey) { return 'gemini-3.6-flash'; }
-        if (creds.groqApiKey) { return 'groq:openai/gpt-oss-120b'; }
-        if (creds.claudeApiKey) { return 'claude:claude-sonnet-5-5'; }
-        if (creds.openaiApiKey) { return 'openai:gpt-4.1'; }
-        if (creds.localEnabled) { return `local:${this.getPreferences().modelName}`; }
-        return 'gemini-3.6-flash';
     }
 }
 

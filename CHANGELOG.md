@@ -4,6 +4,33 @@ All notable changes to the "coding-forever" extension will be documented in this
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [3.0.1]
+
+**Mehrere Ollama-Rechner, per Klick umschaltbar.** Wer für lokale Modelle zu wenig Hardware hat, kann einen stärkeren Rechner im Netzwerk als Ollama-Instanz eintragen und im Dashboard ein- und ausschalten.
+
+### Ollama-Instanzen
+
+* **Beliebig viele Instanzen** statt der bisherigen einen. Jede hat einen Namen und eine Adresse (`http://192.168.1.20:11434`); Schema und Standard-Port 11434 werden ergänzt, wenn man sie weglässt.
+* **Schalter im Dashboard.** Neue Karte „Ollama-Instanzen": ein Klick schaltet eine Instanz ein oder aus, daneben steht live, ob sie antwortet — mit Modellzahl, Antwortzeit und Ollama-Version. „Prüfen" testet neu, „Verwalten" öffnet die AI Engine.
+* **Eigene Gruppe pro Instanz im Modell-Dropdown** („Ollama · Gaming PC"), sodass man sieht, auf welchem Rechner ein Modell läuft. Die Status-Zeile im Chat nennt die Instanz ebenfalls.
+* **Verwaltung in der AI Engine:** anlegen, benennen, Adresse ändern, entfernen — mit eingeklappter Anleitung für den Remote-Rechner (`OLLAMA_HOST=0.0.0.0 ollama serve`, Firewall) und Warnhinweis zur unverschlüsselten Verbindung.
+* **Neuer Befehl `Ollama-Instanzen umschalten`** in der Befehlspalette, als Mehrfachauswahl.
+* **Hardware-Empfehlungen nur noch für den eigenen Rechner.** Der Scan beschreibt diese Maschine; für einen Rechner im Netzwerk wären Empfehlungen und der „Installieren"-Knopf (`ollama pull` läuft lokal) falsch gewesen.
+* **Statuscheck in der Hilfe** meldet eine eingeschaltete, aber nicht erreichbare Instanz mit der naheliegenden Ursache; dazu neue Hilfetexte zum Remote-Betrieb.
+* **Neue Anleitung „Reverse Engineering mit ReVa (Ghidra)“** in der Hilfe (jetzt zwölf Themen): Vorbereitung, fertige Konfiguration für den GUI-Modus (`http://localhost:8080/mcp/message`) und den Headless-Modus (`mcp-reva`), Tipps für die Arbeit (Agent an, konkret fragen, `maxTurns` auf 30–40, Rückfrage vor schreibenden Werkzeugen) und eine Tabelle der typischen Stolperstellen — gekürzte Ergebnisse, Token-Limits bei vielen Werkzeugen, 120-s-Timeout. Auffindbar über „reva“, „ghidra“, „rea“ oder „reverse engineering“.
+* **Bestehende Einrichtung bleibt erhalten:** die bisherige Einzel-Instanz wird beim ersten Start als „Dieser Rechner" übernommen — mit ihrer Adresse und ihrem Schalterzustand. Alte Modell-Auswahlen (`local:…`) laufen weiter.
+
+### Robustheit
+
+* **Timeout für nicht antwortende Rechner.** Ein Netzwerk-Rechner, der gerade aus ist, ließ `fetch` minutenlang hängen — und mit ihm die komplette Modellliste aller Anbieter. Jede Instanz wird jetzt parallel und mit 5 s Timeout geprüft; ein toter Rechner hält die übrigen nicht auf.
+* **Das Webview wird nicht mehr als vertrauenswürdig behandelt:** die Instanzliste wird beim Speichern normalisiert (gültige Adressen, eindeutige IDs ohne `:` und `/`, keine Duplikate), statt roh übernommen zu werden.
+* Das Schreiben von „Büro" als ID ergibt `buero` statt `buro`.
+
+### Intern
+
+* **111 Unit-Tests** (vorher 80). Neu: ein echter HTTP-Server, der Ollama nachstellt, einer der Verbindungen annimmt und nie antwortet (für den Timeout), die Migration der alten Einstellung, die Normalisierung und die Auflösung von `ollama:<instanz>:<modell>`.
+* Entfernt: die ungenutzte Methode `getDefaultModel`.
+
 ## [3.0.0]
 
 **MCP ist da.** Das Feld in der AI Engine speicherte seit Monaten eine Konfiguration, die niemand gelesen hat — das war das einzige Versprechen, das die Extension nicht gehalten hat. Jetzt startet Coding Forever die eingetragenen Server wirklich, holt ihre Tools ab und stellt sie dem Agenten zur Verfügung.

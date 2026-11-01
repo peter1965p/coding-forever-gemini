@@ -10,10 +10,10 @@ export function normalizeOllamaUrl(baseUrl: string): string {
 }
 
 export class OllamaProvider implements LlmProvider {
-    readonly label = 'Ollama';
     private readonly baseUrl: string;
 
-    constructor(baseUrl: string) {
+    /** `label` nennt die Instanz, damit man im Chat sieht, welcher Rechner antwortet. */
+    constructor(baseUrl: string, readonly label: string = 'Ollama') {
         this.baseUrl = normalizeOllamaUrl(baseUrl);
     }
 
@@ -37,12 +37,13 @@ export class OllamaProvider implements LlmProvider {
         } catch (e: any) {
             if (e?.name === 'AbortError') { throw e; }
             throw new ProviderError(
-                `Ollama unter ${this.baseUrl} nicht erreichbar: ${e.message}. Läuft "ollama serve"?`
+                `${this.label} unter ${this.baseUrl} nicht erreichbar: ${e.message}. `
+                + 'Läuft "ollama serve" — und lauscht es bei einem anderen Rechner mit OLLAMA_HOST=0.0.0.0?'
             );
         }
 
         if (!res.ok) {
-            throw new ProviderError(`Ollama (${res.status}): ${await readErrorMessage(res)}`);
+            throw new ProviderError(`${this.label} (${res.status}): ${await readErrorMessage(res)}`);
         }
 
         let text = '';
@@ -50,7 +51,7 @@ export class OllamaProvider implements LlmProvider {
 
         for await (const chunk of readNdjson(res)) {
             if (chunk.error) {
-                throw new ProviderError(`Ollama: ${chunk.error}`);
+                throw new ProviderError(`${this.label}: ${chunk.error}`);
             }
 
             const content = chunk.message?.content;
@@ -75,10 +76,20 @@ export class OllamaProvider implements LlmProvider {
     }
 }
 
-/** Lokal installierte Modelle auflisten (/api/tags). */
-export async function fetchOllamaModels(baseUrl: string): Promise<ModelInfo[]> {
+/** Wie lange ein Statuscheck auf eine Instanz wartet, bevor sie als nicht erreichbar gilt. */
+export const OLLAMA_PROBE_TIMEOUT_MS = 5000;
+
+/**
+ * Installierte Modelle auflisten (/api/tags). Der Timeout ist wichtig: bei einem
+ * Rechner im Netzwerk, der gerade aus ist, hängt fetch sonst minutenlang — und
+ * mit ihm die komplette Modellliste aller Anbieter.
+ */
+export async function fetchOllamaModels(
+    baseUrl: string,
+    timeoutMs: number = OLLAMA_PROBE_TIMEOUT_MS
+): Promise<ModelInfo[]> {
     const url = normalizeOllamaUrl(baseUrl);
-    const res = await fetch(`${url}/api/tags`);
+    const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) {
         throw new ProviderError(`Ollama Tags-Endpoint antwortete mit ${res.status}`);
     }
@@ -91,4 +102,125 @@ export async function fetchOllamaModels(baseUrl: string): Promise<ModelInfo[]> {
 
     models.sort((a, b) => a.id.localeCompare(b.id));
     return models;
+}
+
+/* ==========================================================
+ * INSTANZEN
+ * ========================================================== */
+
+/**
+ * Ein konfigurierter Ollama-Server. Meist der eigene Rechner, bei schwacher
+ * Hardware aber ein stärkerer im Netzwerk — deshalb mehrere, einzeln schaltbar.
+ */
+export interface OllamaInstance {
+    /** Stabile Kennung, Teil der Modell-ID im Dropdown (`ollama:<id>:<modell>`). */
+    id: string;
+    name: string;
+    url: string;
+    enabled: boolean;
+}
+
+export const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
+
+/** "Gaming PC" → "gaming-pc". Ohne ':' und '/', weil die ID in Modell-IDs steckt. */
+export function slugifyInstanceId(name: string): string {
+    const slug = name
+        .toLowerCase()
+        // Umlaute vor dem Entfernen der Akzente ausschreiben: "Büro" → "buero", nicht "buro".
+        .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return slug || 'instanz';
+}
+
+/** Ob die Adresse auf den eigenen Rechner zeigt — nur dort passen Hardware-Empfehlungen. */
+export function isLoopbackUrl(url: string): boolean {
+    try {
+        const host = new URL(normalizeOllamaUrl(url)).hostname.toLowerCase();
+        return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Macht aus beliebiger Eingabe (Webview, alte Einstellungen) eine saubere Liste:
+ * gültige http(s)-Adressen, eindeutige IDs, keine Duplikate, Standard-Port ergänzt.
+ */
+export function normalizeInstances(raw: unknown): OllamaInstance[] {
+    if (!Array.isArray(raw)) { return []; }
+
+    const out: OllamaInstance[] = [];
+    const used = new Set<string>();
+
+    for (const entry of raw) {
+        if (!entry || typeof entry !== 'object') { continue; }
+        const candidate = entry as Partial<OllamaInstance>;
+
+        let url = String(candidate.url ?? '').trim();
+        if (!url) { continue; }
+        // "192.168.1.20" oder "gaming-pc:11434" ohne Schema ist eine häufige Eingabe.
+        if (!/^https?:\/\//i.test(url)) { url = `http://${url}`; }
+
+        try {
+            const parsed = new URL(url);
+            if (!parsed.port && parsed.protocol === 'http:') { parsed.port = '11434'; }
+            url = normalizeOllamaUrl(parsed.toString());
+        } catch {
+            continue;
+        }
+
+        const name = String(candidate.name ?? '').trim() || new URL(url).hostname;
+
+        // Eindeutige ID: gewünschte behalten, sonst aus dem Namen ableiten, Kollisionen nummerieren.
+        const base = slugifyInstanceId(String(candidate.id ?? '').trim() || name);
+        let id = base;
+        for (let n = 2; used.has(id); n++) { id = `${base}-${n}`; }
+        used.add(id);
+
+        out.push({ id, name, url, enabled: candidate.enabled === true });
+    }
+
+    return out;
+}
+
+export interface OllamaStatus {
+    id: string;
+    reachable: boolean;
+    latencyMs?: number;
+    modelCount?: number;
+    version?: string;
+    error?: string;
+}
+
+/** Erreichbarkeit, Antwortzeit und Modellzahl einer Instanz — für den Schalter im Dashboard. */
+export async function probeOllama(
+    instance: OllamaInstance,
+    timeoutMs: number = OLLAMA_PROBE_TIMEOUT_MS
+): Promise<OllamaStatus> {
+    const started = Date.now();
+    try {
+        const models = await fetchOllamaModels(instance.url, timeoutMs);
+        const latencyMs = Date.now() - started;
+
+        let version: string | undefined;
+        try {
+            const res = await fetch(`${normalizeOllamaUrl(instance.url)}/api/version`, {
+                signal: AbortSignal.timeout(timeoutMs)
+            });
+            if (res.ok) { version = String(((await res.json()) as any).version ?? '') || undefined; }
+        } catch { /* Version ist nett, aber nicht nötig */ }
+
+        return { id: instance.id, reachable: true, latencyMs, modelCount: models.length, version };
+    } catch (e: any) {
+        const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+        return {
+            id: instance.id,
+            reachable: false,
+            error: timedOut
+                ? `Keine Antwort innerhalb von ${timeoutMs / 1000} s`
+                : String(e?.cause?.code ?? e?.message ?? e)
+        };
+    }
 }

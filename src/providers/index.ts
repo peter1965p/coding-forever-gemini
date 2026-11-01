@@ -1,10 +1,11 @@
 import { AnthropicProvider, ANTHROPIC_FALLBACK_MODELS, fetchAnthropicModels } from './anthropic';
 import { fetchGeminiModels, GEMINI_FALLBACK_MODELS, GeminiProvider } from './gemini';
-import { fetchOllamaModels, normalizeOllamaUrl, OllamaProvider } from './ollama';
+import { fetchOllamaModels, normalizeOllamaUrl, OllamaInstance, OllamaProvider } from './ollama';
 import { fetchOpenAiCompatModels, OpenAiCompatProvider } from './openaiCompat';
 import { LlmProvider, ModelInfo, ProviderError } from './types';
 
 export * from './types';
+export type { OllamaInstance, OllamaStatus } from './ollama';
 
 const GROQ_BASE = 'https://api.groq.com/openai/v1';
 const OPENAI_BASE = 'https://api.openai.com/v1';
@@ -17,8 +18,8 @@ export interface ProviderCredentials {
     groqApiKey: string;
     openaiApiKey: string;
     claudeApiKey: string;
-    localEnabled: boolean;
-    localBaseUrl: string;
+    /** Alle konfigurierten Ollama-Server, auch ausgeschaltete. */
+    ollamaInstances: OllamaInstance[];
 }
 
 export interface ResolvedModel {
@@ -26,6 +27,8 @@ export interface ResolvedModel {
     providerId: ProviderId;
     /** Modell-ID ohne Präfix, so wie der Anbieter sie erwartet. */
     model: string;
+    /** Bei Ollama: welche Instanz antwortet. */
+    instanceId?: string;
     /**
      * true, wenn dieses Modell kein extern definiertes Function-Calling kann
      * (z.B. groq/compound mit seinen eingebauten Server-Tools).
@@ -47,7 +50,7 @@ const OPENAI_NON_CHAT = [
     'moderation', 'image', 'transcribe', 'search', 'computer-use'
 ];
 
-function splitModelId(modelId: string): { providerId: ProviderId; model: string } {
+function splitModelId(modelId: string): { providerId: ProviderId; model: string; instanceId?: string } {
     const separator = modelId.indexOf(':');
     if (separator > 0) {
         const prefix = modelId.slice(0, separator);
@@ -55,8 +58,19 @@ function splitModelId(modelId: string): { providerId: ProviderId; model: string 
         if (prefix === 'groq') { return { providerId: 'groq', model: rest }; }
         if (prefix === 'openai') { return { providerId: 'openai', model: rest }; }
         if (prefix === 'claude') { return { providerId: 'claude', model: rest }; }
-        if (prefix === 'local') { return { providerId: 'local', model: rest }; }
         if (prefix === 'gemini') { return { providerId: 'gemini', model: rest }; }
+
+        // Neu: "ollama:<instanz>:<modell>". Die Instanz-ID enthält nie ':' oder '/',
+        // der Rest ist der Modellname — der selbst Doppelpunkte haben darf ("qwen2.5-coder:7b").
+        if (prefix === 'ollama') {
+            const inner = rest.indexOf(':');
+            return inner > 0
+                ? { providerId: 'local', instanceId: rest.slice(0, inner), model: rest.slice(inner + 1) }
+                : { providerId: 'local', model: rest };
+        }
+
+        // Alt: "local:<modell>" aus der Zeit mit nur einer Instanz.
+        if (prefix === 'local') { return { providerId: 'local', model: rest }; }
     }
     // Ohne Präfix: historische Gemini-IDs wie "gemini-3.6-flash".
     return { providerId: 'gemini', model: modelId };
@@ -68,7 +82,7 @@ function splitModelId(modelId: string): { providerId: ProviderId; model: string 
  * vorher wurde eine explizite Auswahl bei fehlendem Key still umgeleitet.
  */
 export function resolveModel(modelId: string, creds: ProviderCredentials): ResolvedModel {
-    const { providerId, model } = splitModelId(modelId || 'gemini-3.6-flash');
+    const { providerId, model, instanceId } = splitModelId(modelId || 'gemini-3.6-flash');
 
     switch (providerId) {
         case 'groq': {
@@ -110,9 +124,30 @@ export function resolveModel(modelId: string, creds: ProviderCredentials): Resol
         }
 
         case 'local': {
+            const instances = creds.ollamaInstances ?? [];
+
+            // Ohne Instanz-ID (alte Auswahl) die erste eingeschaltete nehmen.
+            const instance = instanceId
+                ? instances.find(entry => entry.id === instanceId)
+                : instances.find(entry => entry.enabled);
+
+            if (!instance) {
+                throw new ProviderError(
+                    instanceId
+                        ? `Die Ollama-Instanz "${instanceId}" gibt es nicht mehr. Bitte ein Modell neu auswählen.`
+                        : 'Keine Ollama-Instanz eingerichtet. Unter "AI Engine" oder im Dashboard hinzufügen.'
+                );
+            }
+            if (!instance.enabled) {
+                throw new ProviderError(
+                    `Die Ollama-Instanz "${instance.name}" ist ausgeschaltet. Im Dashboard per Schalter aktivieren.`
+                );
+            }
+
             return {
-                provider: new OllamaProvider(creds.localBaseUrl),
+                provider: new OllamaProvider(instance.url, `Ollama · ${instance.name}`),
                 providerId,
+                instanceId: instance.id,
                 model: model || 'llama3.2',
                 toolsUnsupported: false
             };
@@ -145,6 +180,8 @@ export function pickCheapModel(providerId: ProviderId, model: string): string {
 
 export interface ModelGroup {
     providerId: ProviderId;
+    /** Nur bei Ollama: zu welcher Instanz die Gruppe gehört. */
+    instanceId?: string;
     label: string;
     models: ModelInfo[];
     /** Gesetzt, wenn die Liste nicht geladen werden konnte (kein Key, Netzfehler). */
@@ -213,27 +250,43 @@ export async function listAllModels(creds: ProviderCredentials): Promise<ModelGr
         }
     })());
 
-    tasks.push((async (): Promise<ModelGroup> => {
-        if (!creds.localEnabled) {
-            return { providerId: 'local', label: 'Lokal (Ollama)', models: [], hint: 'Unter "AI Engine" aktivieren' };
-        }
-        try {
-            const models = await fetchOllamaModels(creds.localBaseUrl);
-            return {
-                providerId: 'local',
-                label: 'Lokal (Ollama)',
-                models,
-                hint: models.length === 0 ? 'Keine Modelle installiert' : undefined
-            };
-        } catch {
-            return {
-                providerId: 'local',
-                label: 'Lokal (Ollama)',
-                models: [],
-                hint: `${normalizeOllamaUrl(creds.localBaseUrl)} nicht erreichbar`
-            };
-        }
-    })());
+    // Pro eingeschalteter Instanz eine eigene Gruppe, damit man im Dropdown sieht,
+    // auf welchem Rechner ein Modell läuft. Alle parallel: ein ausgeschalteter
+    // Rechner im Netz darf die übrigen nicht aufhalten (der Probe-Timeout greift).
+    const activeInstances = (creds.ollamaInstances ?? []).filter(instance => instance.enabled);
+
+    if (activeInstances.length === 0) {
+        tasks.push(Promise.resolve<ModelGroup>({
+            providerId: 'local',
+            label: 'Ollama',
+            models: [],
+            hint: 'Im Dashboard oder unter "AI Engine" aktivieren'
+        }));
+    }
+
+    for (const instance of activeInstances) {
+        tasks.push((async (): Promise<ModelGroup> => {
+            const label = `Ollama · ${instance.name}`;
+            try {
+                const models = await fetchOllamaModels(instance.url);
+                return {
+                    providerId: 'local',
+                    instanceId: instance.id,
+                    label,
+                    models,
+                    hint: models.length === 0 ? 'Keine Modelle installiert' : undefined
+                };
+            } catch {
+                return {
+                    providerId: 'local',
+                    instanceId: instance.id,
+                    label,
+                    models: [],
+                    hint: `${normalizeOllamaUrl(instance.url)} nicht erreichbar`
+                };
+            }
+        })());
+    }
 
     const settled = await Promise.allSettled(tasks);
     return settled

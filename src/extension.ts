@@ -11,6 +11,7 @@ import { ChatMessage, PromptDatabaseManager } from './lib/database';
 import { getAgentLimits, SettingsStore } from './lib/settings';
 import { getWebviewHtml } from './lib/webview';
 import { listAllModels, pickCheapModel, resolveModel } from './providers';
+import { probeOllama } from './providers/ollama';
 import { AgentMessage, ProviderError } from './providers/types';
 import { getDynamicModelRecommendations, getLiveStats, getSystemSpecs } from './system/specs';
 import { createProject } from './system/projects';
@@ -40,6 +41,7 @@ let activeSidebarView: vscode.WebviewView | undefined;
 export async function activate(context: vscode.ExtensionContext) {
     const settings = new SettingsStore(context);
     await settings.migrateSecrets();
+    await settings.migrateOllama();
 
     const dbManager = await PromptDatabaseManager.getInstance(context);
     context.subscriptions.push({ dispose: () => dbManager.dispose() });
@@ -109,6 +111,36 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
 
         vscode.commands.registerCommand('coding-forever.showLog', () => output.show()),
+
+        vscode.commands.registerCommand('coding-forever.switchOllama', async () => {
+            const instances = settings.getPreferences().ollamaInstances;
+            if (instances.length === 0) {
+                vscode.window.showInformationMessage(
+                    'Noch keine Ollama-Instanz eingerichtet. Unter "AI Engine" hinzufügen.'
+                );
+                return;
+            }
+
+            const picked = await vscode.window.showQuickPick(
+                instances.map(instance => ({
+                    label: instance.name,
+                    description: instance.url,
+                    picked: instance.enabled,
+                    id: instance.id
+                })),
+                { canPickMany: true, placeHolder: 'Welche Ollama-Instanzen sollen aktiv sein?' }
+            );
+            if (!picked) { return; }
+
+            const active = new Set(picked.map(item => item.id));
+            await settings.updatePreferences({
+                ollamaInstances: instances.map(instance => ({ ...instance, enabled: active.has(instance.id) }))
+            });
+            await publishOllamaChange(deps);
+            vscode.window.showInformationMessage(
+                active.size > 0 ? `Aktive Ollama-Instanzen: ${picked.map(p => p.label).join(', ')}` : 'Alle Ollama-Instanzen ausgeschaltet.'
+            );
+        }),
 
         vscode.commands.registerCommand('codingForever.openHistory', async () => {
             if (activeSidebarView) {
@@ -221,6 +253,24 @@ export function deactivate() {
 }
 
 /**
+ * Nach einer Änderung an den Ollama-Instanzen: Einstellungen, Modellliste und
+ * Erreichbarkeit an alle offenen Fenster schicken. Die Modellliste kommt zuerst
+ * heraus, der Statuscheck hinterher — ein toter Rechner soll den Schalter nicht blockieren.
+ */
+async function publishOllamaChange(deps: Deps): Promise<void> {
+    broadcast({ type: 'settings', settings: await deps.settings.getPublicSettings() });
+    broadcast({ type: 'modelsLoaded', groups: await listAllModels(await deps.settings.getCredentials()) });
+    await publishOllamaStatus(deps);
+}
+
+/** Erreichbarkeit aller Instanzen prüfen (parallel) und melden. */
+async function publishOllamaStatus(deps: Deps): Promise<void> {
+    const instances = deps.settings.getPreferences().ollamaInstances;
+    const statuses = await Promise.all(instances.map(instance => probeOllama(instance)));
+    broadcast({ type: 'ollamaStatus', statuses });
+}
+
+/**
  * Verbindungen mit der gespeicherten Konfiguration abgleichen und alle offenen
  * Fenster über das Ergebnis informieren.
  */
@@ -327,6 +377,17 @@ async function handleWebviewMessage(
 
             case 'getModels': {
                 post({ type: 'modelsLoaded', groups: await listAllModels(await settings.getCredentials()) });
+                return;
+            }
+
+            case 'setOllamaInstanceEnabled': {
+                await settings.setOllamaInstanceEnabled(String(msg.id), msg.enabled === true);
+                await publishOllamaChange(deps);
+                return;
+            }
+
+            case 'checkOllama': {
+                await publishOllamaStatus(deps);
                 return;
             }
 
@@ -494,6 +555,10 @@ async function handleWebviewMessage(
                 const updated = await settings.getPublicSettings();
                 broadcast({ type: 'settings', settings: updated });
                 broadcast({ type: 'modelsLoaded', groups: await listAllModels(await settings.getCredentials()) });
+
+                if (msg.prefs && 'ollamaInstances' in msg.prefs) {
+                    await publishOllamaStatus(deps);
+                }
 
                 // Geänderte MCP-Konfiguration sofort übernehmen: neue Server
                 // starten, entfernte beenden, unveränderte weiterlaufen lassen.

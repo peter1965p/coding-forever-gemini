@@ -1,6 +1,6 @@
 # Coding Forever
 
-![Version](https://img.shields.io/badge/version-3.0.0-orange.svg)
+![Version](https://img.shields.io/badge/version-3.0.1-orange.svg)
 ![VSCode](https://img.shields.io/badge/VS%20Code-1.134%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -45,6 +45,22 @@ nachbessern. Jede Dateiänderung wird vorher als VS-Code-Diff gezeigt.
 Ohne Agent-Modus läuft der Chat ohne Datei- und Terminal-Zugriff; das Modell bekommt
 nur die gerade offene Datei mit. Das ist spürbar günstiger bei knappen Token-Limits.
 
+### Ollama auf mehreren Rechnern
+
+Reicht die eigene Hardware nicht, trägst du einen stärkeren Rechner im Netzwerk als
+weitere Instanz ein (**AI Engine → Ollama-Instanzen**). Im **Dashboard** schaltest du
+jede Instanz mit einem Klick ein oder aus und siehst live, ob sie antwortet. Jede
+eingeschaltete Instanz erscheint als eigene Gruppe im Modell-Dropdown.
+
+Auf dem anderen Rechner genügt:
+
+```bash
+OLLAMA_HOST=0.0.0.0 ollama serve    # und Port 11434 in der Firewall freigeben
+```
+
+> Die Verbindung ist unverschlüsselt und ungeschützt. Nur in einem Netz verwenden,
+> dem du vertraust, und nie direkt ins Internet freigeben.
+
 ### MCP-Server
 
 Über das **Model Context Protocol** bekommt der Agent beliebige weitere Werkzeuge —
@@ -74,6 +90,9 @@ Unterstützt werden **stdio** (lokaler Prozess) und **Streamable HTTP** (`"url":
 dazu `env`, `cwd`, `args` und `disabled`. Nach dem Speichern werden nur geänderte Server
 neu gestartet — unveränderte laufen weiter.
 
+Für **Reverse Engineering mit Ghidra** gibt es in der Hilfe eine eigene Anleitung zu ReVa
+(Konfiguration für GUI- und Headless-Modus, Tipps, typische Stolperstellen).
+
 Die AI Engine zeigt pro Server Status, Transport und Tool-Anzahl; schlägt einer fehl,
 steht die Ursache im Klartext daneben. Schreibende Tools fragen vor der Ausführung nach,
 solange **Accept All** aus ist — ob ein Tool nur liest, meldet der Server selbst.
@@ -86,7 +105,7 @@ solange **Accept All** aus ist — ob ein Tool nur liest, meldet der Server selb
 | **Groq** | Sehr schnell, kostenloses Tier, Live-Modellliste | [console.groq.com](https://console.groq.com/keys) |
 | **Anthropic Claude** | Stark bei langen Agent-Läufen | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 | **OpenAI** | GPT- und o-Serie | [platform.openai.com](https://platform.openai.com/api-keys) |
-| **Ollama** | Komplett offline, kein Key nötig | — |
+| **Ollama** | Eigene Modelle, kein Key nötig — auf diesem oder einem anderen Rechner | — |
 
 Alle Anbieter streamen, alle können Tool-Calling. Welche Modelle verfügbar sind, wird
 live bei der jeweiligen API abgefragt — veraltete Dropdown-Einträge gibt es nicht mehr.
@@ -107,12 +126,12 @@ live bei der jeweiligen API abgefragt — veraltete Dropdown-Einträge gibt es n
 * **Quick Fix** — Fehler im Editor per Glühbirne an den Chat geben.
 * **Kontextmenü** — markierten Code mit „Auswahl an den Chat senden" übergeben.
 * **Prompt-Bibliothek** — eigene Vorlagen mit `{selection}` und `{file}`, global oder pro Workspace.
-* **Hilfe mit Statuscheck** — elf durchsuchbare Themen, und oben eine Diagnose, die zeigt,
+* **Hilfe mit Statuscheck** — zwölf durchsuchbare Themen, und oben eine Diagnose, die zeigt,
   was gerade fehlt (kein Key? MCP-Server tot? kein Projekt offen?) — jeweils mit dem
   passenden Knopf daneben. Erreichbar über das Fragezeichen im Chat.
 * **Dashboard** — Hardware-Monitor (CPU-Last, RAM, Temperatur, GPU), Anbieter-Status, Direkt-Prompt.
 * **Projektgenerator** — Node.js, Node + TypeScript, React/Vite, Next.js.
-* **Modell-Empfehlung** — schlägt anhand von RAM und GPU passende Ollama-Modelle vor und installiert sie auf Klick.
+* **Modell-Empfehlung** — schlägt anhand von RAM und GPU passende Ollama-Modelle für den eigenen Rechner vor und installiert sie auf Klick.
 
 ---
 
@@ -191,6 +210,7 @@ Anpassbar über `codingForever.projectsDirectory`.
 | `Coding Forever: Auswahl an den Chat senden` | Markierten Code übergeben |
 | `Coding Forever: Laufenden Agenten stoppen` | Bricht den aktiven Durchlauf ab |
 | `Coding Forever: MCP-Server neu verbinden` | Startet die konfigurierten Server neu |
+| `Coding Forever: Ollama-Instanzen umschalten` | Wählt, welche Ollama-Rechner aktiv sind |
 | `Coding Forever: Protokoll anzeigen` | Ausgabekanal mit den MCP-Meldungen |
 | `Coding Forever: Node-Projekt erstellen` | Projektgenerator |
 | `Coding Forever: Nach Updates suchen` | Prüft das neueste GitHub-Release |
@@ -203,7 +223,7 @@ Anpassbar über `codingForever.projectsDirectory`.
 ```bash
 npm install
 npm run watch     # esbuild + tsc im Watch-Modus
-npm test          # Typecheck, Lint und 77 Unit-Tests
+npm test          # Typecheck, Lint und 111 Unit-Tests
 npm run vsix      # .vsix-Paket bauen
 ```
 

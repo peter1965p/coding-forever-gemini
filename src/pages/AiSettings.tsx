@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { bootstrap, ModelGroup, PublicSettings, vscode } from '../lib/vscodeApi';
+import { bootstrap, ModelGroup, OllamaInstance, OllamaStatus, PublicSettings, vscode } from '../lib/vscodeApi';
 import { PAGE_CSS } from './Settings';
 
 interface SystemSpecs {
@@ -29,6 +29,16 @@ interface McpServerStatus {
     toolCount: number;
     toolNames: string[];
     error?: string;
+}
+
+/** Zeigt die Adresse auf den eigenen Rechner? (Spiegel der Prüfung im Host.) */
+function isLoopback(url: string): boolean {
+    try {
+        const host = new URL(/^https?:\/\//i.test(url) ? url : `http://${url}`).hostname.toLowerCase();
+        return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+    } catch {
+        return false;
+    }
 }
 
 const MCP_EXAMPLE = JSON.stringify({
@@ -103,8 +113,8 @@ export const AiSettings: React.FC = () => {
     const [recommended, setRecommended] = useState<RecommendedModel[]>([]);
     const [saved, setSaved] = useState(false);
 
-    const [localEnabled, setLocalEnabled] = useState(settings.localEnabled);
-    const [baseUrl, setBaseUrl] = useState(settings.baseUrl);
+    const [instances, setInstances] = useState<OllamaInstance[]>(settings.ollamaInstances);
+    const [ollamaStatus, setOllamaStatus] = useState<Record<string, OllamaStatus>>({});
     const [userName, setUserName] = useState(settings.userName);
     const [mcpConfig, setMcpConfig] = useState(settings.mcpConfig);
 
@@ -112,14 +122,14 @@ export const AiSettings: React.FC = () => {
         vscode.postMessage({ type: 'getModels' });
         vscode.postMessage({ type: 'scanSystem' });
         vscode.postMessage({ type: 'getMcpStatus' });
+        vscode.postMessage({ type: 'checkOllama' });
 
         const handleMessage = (event: MessageEvent) => {
             const message = event.data;
             if (message.type === 'settings') {
                 const next: PublicSettings = message.settings;
                 setSettings(next);
-                setLocalEnabled(next.localEnabled);
-                setBaseUrl(next.baseUrl);
+                setInstances(next.ollamaInstances);
                 setUserName(next.userName);
                 setMcpConfig(next.mcpConfig);
                 setKeyInputs({});
@@ -129,6 +139,10 @@ export const AiSettings: React.FC = () => {
             } else if (message.type === 'systemSpecs') {
                 setSpecs(message.specs);
                 setRecommended(message.recommended || []);
+            } else if (message.type === 'ollamaStatus') {
+                const next: Record<string, OllamaStatus> = {};
+                for (const status of message.statuses || []) { next[status.id] = status; }
+                setOllamaStatus(next);
             } else if (message.type === 'mcpSyncing') {
                 setMcpSyncing(true);
             } else if (message.type === 'mcpStatus') {
@@ -141,10 +155,25 @@ export const AiSettings: React.FC = () => {
         return () => window.removeEventListener('message', handleMessage);
     }, []);
 
-    const localGroup = useMemo(
-        () => modelGroups.find(group => group.providerId === 'local'),
-        [modelGroups]
-    );
+    const groupOf = (instanceId: string) =>
+        modelGroups.find(group => group.providerId === 'local' && group.instanceId === instanceId);
+
+    // Hardware-Empfehlungen beschreiben DIESEN Rechner — für einen anderen im Netz sind sie irrelevant.
+    const hasLocalInstance = instances.some(instance => instance.enabled && isLoopback(instance.url));
+
+    const updateInstance = (id: string, patch: Partial<OllamaInstance>) =>
+        setInstances(prev => prev.map(instance => instance.id === id ? { ...instance, ...patch } : instance));
+
+    const addInstance = (preset: 'local' | 'remote') => {
+        const id = `neu-${Date.now().toString(36)}`;
+        setInstances(prev => [...prev, preset === 'local'
+            ? { id, name: 'Dieser Rechner', url: 'http://localhost:11434', enabled: true }
+            : { id, name: 'Anderer Rechner', url: '', enabled: true }
+        ]);
+    };
+
+    const removeInstance = (id: string) =>
+        setInstances(prev => prev.filter(instance => instance.id !== id));
 
     const totalMcpTools = useMemo(
         () => mcpServers.reduce((sum, server) => sum + server.toolCount, 0),
@@ -164,7 +193,7 @@ export const AiSettings: React.FC = () => {
             type: 'saveAiSettings',
             keys,
             clearKeys,
-            prefs: { localEnabled, baseUrl, userName, mcpConfig }
+            prefs: { ollamaInstances: instances, userName, mcpConfig }
         });
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
@@ -245,71 +274,120 @@ export const AiSettings: React.FC = () => {
                 <div className="cf-card-head">
                     <div>
                         <div className="cf-card-title" style={{ marginBottom: '2px' }}>
-                            Lokale Modelle (Ollama)
+                            Ollama-Instanzen
                         </div>
                         <div className="cf-hint" style={{ margin: 0 }}>
-                            Läuft komplett offline, ohne API-Key.
+                            Eigene Modelle ohne API-Key — auf diesem Rechner oder auf einem stärkeren im Netzwerk.
+                            Eingeschaltete Instanzen erscheinen als eigene Gruppe im Modell-Dropdown.
                         </div>
                     </div>
-                    <label className="cf-switch">
-                        <input type="checkbox" checked={localEnabled}
-                            onChange={e => setLocalEnabled(e.target.checked)} />
-                        <span />
-                    </label>
                 </div>
 
-                {localEnabled && (
-                    <div className="cf-local">
-                        <span className="cf-label">Endpoint</span>
-                        <div className="cf-row">
-                            <input className="cf-input" type="text" value={baseUrl}
-                                placeholder="http://localhost:11434"
-                                onChange={e => setBaseUrl(e.target.value)} />
-                            <button className="cf-btn-secondary"
-                                onClick={() => vscode.postMessage({ type: 'getModels' })}>
-                                Scannen
-                            </button>
+                {instances.length === 0 && (
+                    <div className="cf-hint" style={{ margin: '10px 0 0' }}>Noch keine Instanz angelegt.</div>
+                )}
+
+                {instances.map(instance => {
+                    const status = ollamaStatus[instance.id];
+                    const group = groupOf(instance.id);
+                    return (
+                        <div key={instance.id} className="cf-instance">
+                            <div className="cf-instance-head">
+                                <label className="cf-switch" title={instance.enabled ? 'Ausschalten' : 'Einschalten'}>
+                                    <input type="checkbox" checked={instance.enabled}
+                                        onChange={e => updateInstance(instance.id, { enabled: e.target.checked })} />
+                                    <span />
+                                </label>
+                                <input className="cf-input" type="text" value={instance.name}
+                                    placeholder="Name, z. B. Gaming PC"
+                                    onChange={e => updateInstance(instance.id, { name: e.target.value })} />
+                                <button className="cf-btn-secondary" title="Instanz entfernen"
+                                    onClick={() => removeInstance(instance.id)}>Entfernen</button>
+                            </div>
+
+                            <input className="cf-input" type="text" value={instance.url}
+                                placeholder="http://192.168.1.20:11434"
+                                style={{ marginTop: '6px' }}
+                                onChange={e => updateInstance(instance.id, { url: e.target.value })} />
+
+                            {instance.enabled && (
+                                <div className="cf-hint" style={{
+                                    margin: '6px 0 0',
+                                    color: status && !status.reachable ? 'var(--cf-danger)' : 'var(--cf-fg-muted)'
+                                }}>
+                                    {!status && 'Prüfe...'}
+                                    {status?.reachable && group && group.models.length > 0 &&
+                                        `✓ ${group.models.length} Modelle: ${group.models.map(m => m.id).join(', ')}`}
+                                    {status?.reachable && (!group || group.models.length === 0) &&
+                                        '✓ Erreichbar, aber noch kein Modell installiert.'}
+                                    {status && !status.reachable && `⚠️ ${status.error ?? 'Nicht erreichbar'}`}
+                                    {status?.reachable && status.latencyMs !== undefined && ` · ${status.latencyMs} ms`}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+
+                <div className="cf-row" style={{ marginTop: '10px', flexWrap: 'wrap' }}>
+                    <button className="cf-btn-secondary" onClick={() => addInstance('remote')}>
+                        + Rechner im Netzwerk
+                    </button>
+                    {!instances.some(instance => isLoopback(instance.url)) && (
+                        <button className="cf-btn-secondary" onClick={() => addInstance('local')}>
+                            + Dieser Rechner
+                        </button>
+                    )}
+                    <button className="cf-btn-secondary" style={{ marginLeft: 'auto' }}
+                        onClick={() => vscode.postMessage({ type: 'checkOllama' })}>
+                        Neu prüfen
+                    </button>
+                </div>
+
+                <details className="cf-remote-help">
+                    <summary>Wie richte ich einen Rechner im Netzwerk ein?</summary>
+                    <ol>
+                        <li>
+                            Auf dem <strong>anderen</strong> Rechner Ollama so starten, dass es von außen
+                            erreichbar ist: <code>OLLAMA_HOST=0.0.0.0 ollama serve</code>
+                        </li>
+                        <li>Dort Port <code>11434</code> in der Firewall für dein Netz freigeben.</li>
+                        <li>Hier dessen Adresse eintragen, z. B. <code>http://192.168.1.20:11434</code>
+                            (Port und <code>http://</code> sind optional, 11434 wird ergänzt).</li>
+                        <li>Einschalten und <em>Speichern</em> — die Modelle erscheinen im Dropdown.</li>
+                    </ol>
+                    <p>
+                        ⚠️ Die Verbindung ist unverschlüsselt und ungeschützt. Nur in einem Netz verwenden,
+                        dem du vertraust — nie direkt ins Internet freigeben.
+                    </p>
+                </details>
+
+                {hasLocalInstance && specs && (
+                    <div className="cf-specs">
+                        <div className="cf-hint" style={{ marginBottom: recommended.length ? '8px' : 0 }}>
+                            <strong>Dieser Rechner:</strong> {specs.cpuModel} ({specs.cpuCores} Kerne
+                            {specs.cpuSpeed ? `, ${specs.cpuSpeed.toFixed(1)} GHz` : ''})
+                            {' · '}{specs.ramUsedPercent}% von {specs.ramGB} GB RAM
+                            {specs.cpuTempC !== null ? ` · ${specs.cpuTempC}°C` : ''}
+                            {' · GPU: '}<i>{specs.gpuName}</i>
                         </div>
 
-                        {localGroup && localGroup.models.length > 0 ? (
-                            <div className="cf-hint" style={{ marginTop: '8px', color: 'var(--cf-success)' }}>
-                                ✓ {localGroup.models.length} Modelle erkannt: {localGroup.models.map(m => m.id).join(', ')}
-                            </div>
-                        ) : (
-                            <div className="cf-hint" style={{ marginTop: '8px', color: 'var(--cf-danger)' }}>
-                                ⚠️ {localGroup?.hint || 'Keine lokalen Modelle gefunden.'}
-                            </div>
-                        )}
-
-                        {specs && (
-                            <div className="cf-specs">
-                                <div className="cf-hint" style={{ marginBottom: recommended.length ? '8px' : 0 }}>
-                                    <strong>Hardware:</strong> {specs.cpuModel} ({specs.cpuCores} Kerne
-                                    {specs.cpuSpeed ? `, ${specs.cpuSpeed.toFixed(1)} GHz` : ''})
-                                    {' · '}{specs.ramUsedPercent}% von {specs.ramGB} GB RAM
-                                    {specs.cpuTempC !== null ? ` · ${specs.cpuTempC}°C` : ''}
-                                    {' · GPU: '}<i>{specs.gpuName}</i>
-                                </div>
-
-                                {recommended.map(model => (
-                                    <div key={model.name} className="cf-rec">
-                                        <div style={{ minWidth: 0 }}>
-                                            <div className="cf-rec-name">
-                                                {model.name} <span className="cf-badge">{model.tag}</span>
-                                            </div>
-                                            <div className="cf-hint" style={{ margin: 0 }}>{model.desc}</div>
-                                        </div>
-                                        <button className="cf-btn-secondary"
-                                            onClick={() => vscode.postMessage({
-                                                type: 'executeCommand',
-                                                command: `ollama pull ${model.name}`
-                                            })}>
-                                            Installieren
-                                        </button>
+                        {recommended.map(model => (
+                            <div key={model.name} className="cf-rec">
+                                <div style={{ minWidth: 0 }}>
+                                    <div className="cf-rec-name">
+                                        {model.name} <span className="cf-badge">{model.tag}</span>
                                     </div>
-                                ))}
+                                    <div className="cf-hint" style={{ margin: 0 }}>{model.desc}</div>
+                                </div>
+                                <button className="cf-btn-secondary"
+                                    onClick={() => vscode.postMessage({
+                                        type: 'executeCommand',
+                                        command: `ollama pull ${model.name}`
+                                    })}>
+                                    Installieren
+                                </button>
                             </div>
-                        )}
+                        ))}
                     </div>
                 )}
             </section>
@@ -415,7 +493,20 @@ const AI_CSS = `
 }
 .cf-switch input:checked + span { background: var(--cf-success); }
 .cf-switch input:checked + span::before { transform: translateX(16px); }
-.cf-local { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--cf-border); }
+.cf-instance {
+    margin-top: 10px; padding: 10px; border-radius: 6px;
+    background: var(--cf-bg); border: 1px solid var(--cf-border);
+}
+.cf-instance-head { display: flex; align-items: center; gap: 8px; }
+.cf-instance-head .cf-input { flex: 1; }
+.cf-remote-help { margin-top: 10px; font-size: 12px; color: var(--cf-fg-muted); }
+.cf-remote-help summary { cursor: pointer; color: var(--cf-accent); font-size: 11.5px; }
+.cf-remote-help ol { margin: 8px 0; padding-left: 20px; line-height: 1.6; }
+.cf-remote-help p { margin: 6px 0 0; line-height: 1.5; }
+.cf-remote-help code {
+    background: var(--cf-code-bg); border-radius: 3px; padding: 1px 4px;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
 .cf-specs {
     margin-top: 12px; padding: 10px; border-radius: 6px;
     background: var(--cf-bg); border: 1px dashed var(--cf-border);

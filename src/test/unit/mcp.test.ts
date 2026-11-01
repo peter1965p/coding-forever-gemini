@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
-import { after, describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 
 import { McpManager, normalizeToolResult } from '../../mcp/manager';
 import { parseMcpConfig, transportOf } from '../../mcp/types';
@@ -231,5 +232,50 @@ describe('McpManager gegen einen echten Server', () => {
         assert.equal(statuses[0].state, 'error');
         assert.ok(statuses[0].error);
         assert.deepEqual(manager.getTools(), []);
+    });
+});
+
+describe('McpManager ueber Streamable HTTP', () => {
+    const HTTP_FIXTURE = path.resolve(process.cwd(), 'src/test/fixtures/httpServer.mjs');
+    const PORT = 38000 + Math.floor(Math.random() * 1000);
+    const manager = new McpManager();
+    let server: ChildProcess;
+
+    before(async () => {
+        server = spawn(process.execPath, [HTTP_FIXTURE, String(PORT)], { stdio: ['ignore', 'pipe', 'inherit'] });
+        await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('HTTP-Server startete nicht')), 10_000);
+            server.stdout!.on('data', chunk => {
+                if (String(chunk).includes('READY')) { clearTimeout(timer); resolve(); }
+            });
+            server.on('error', reject);
+        });
+    });
+
+    after(async () => {
+        await manager.disposeAll();
+        server.kill();
+    });
+
+    it('verbindet sich per URL und liest die Tools', async () => {
+        const statuses = await manager.sync(JSON.stringify({
+            mcpServers: { web: { url: `http://127.0.0.1:${PORT}/mcp` } }
+        }));
+        assert.equal(statuses[0].state, 'connected', statuses[0].error);
+        assert.equal(statuses[0].transport, 'http');
+        assert.deepEqual(manager.getTools().map(t => t.name), ['mcp__web__ping']);
+    });
+
+    it('ruft ein Tool ueber HTTP auf', async () => {
+        const result = await manager.callTool('mcp__web__ping', { name: 'Peter' });
+        assert.equal(result.content, 'pong Peter');
+    });
+
+    it('meldet einen nicht erreichbaren HTTP-Server als Fehler statt zu haengen', async () => {
+        const statuses = await manager.sync(JSON.stringify({
+            mcpServers: { tot: { url: 'http://127.0.0.1:1/mcp' } }
+        }));
+        assert.equal(statuses[0].state, 'error');
+        assert.ok(statuses[0].error);
     });
 });
