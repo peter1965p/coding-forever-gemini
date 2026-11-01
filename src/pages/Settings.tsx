@@ -10,8 +10,17 @@ const FONT_OPTIONS = [
     { value: "'Inter', system-ui, sans-serif", label: 'Inter' }
 ];
 
+const SIZE_OPTIONS = [
+    { value: 10, label: 'Sehr kompakt' },
+    { value: 11, label: 'Kompakt' },
+    { value: 12, label: 'Normal' },
+    { value: 14, label: 'Groß' },
+    { value: 16, label: 'Sehr groß' }
+];
+
 export const Settings: React.FC = () => {
     const [chatFont, setChatFont] = useState(bootstrap.settings.chatFont);
+    const [chatFontSize, setChatFontSize] = useState(bootstrap.settings.chatFontSize);
     const [saved, setSaved] = useState(false);
 
     // Die Seite wurde vorher ohne Props gerendert und startete deshalb mit
@@ -23,6 +32,7 @@ export const Settings: React.FC = () => {
             if (event.data?.type === 'settings') {
                 const settings: PublicSettings = event.data.settings;
                 setChatFont(settings.chatFont);
+                setChatFontSize(settings.chatFontSize);
             }
         };
         window.addEventListener('message', handleMessage);
@@ -30,7 +40,7 @@ export const Settings: React.FC = () => {
     }, []);
 
     const handleSave = () => {
-        vscode.postMessage({ type: 'saveSettings', prefs: { chatFont } });
+        vscode.postMessage({ type: 'saveSettings', prefs: { chatFont, chatFontSize } });
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
     };
@@ -46,14 +56,44 @@ export const Settings: React.FC = () => {
             </p>
 
             <section className="cf-card">
-                <div className="cf-card-title">Chat-Schriftart</div>
+                <div className="cf-card-title">Darstellung des Chats</div>
+
+                <span className="cf-label">Schriftart</span>
                 <select className="cf-input" value={chatFont} onChange={e => setChatFont(e.target.value)}>
                     {FONT_OPTIONS.map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                 </select>
-                <div className="cf-preview" style={{ fontFamily: chatFont }}>
-                    So sieht dein Chat aus: const antwort = await krebsi.hilf(mir);
+
+                <span className="cf-label" style={{ marginTop: '10px' }}>
+                    Größe — skaliert Text und Abstände gemeinsam
+                </span>
+                <div className="cf-row">
+                    <input
+                        className="cf-range"
+                        type="range"
+                        min={9}
+                        max={18}
+                        step={1}
+                        value={chatFontSize}
+                        onChange={e => setChatFontSize(Number(e.target.value))}
+                    />
+                    <span className="cf-badge muted">{chatFontSize} px</span>
+                </div>
+                <div className="cf-row" style={{ marginTop: '6px', flexWrap: 'wrap' }}>
+                    {SIZE_OPTIONS.map(option => (
+                        <button
+                            key={option.value}
+                            className={`cf-btn-secondary${chatFontSize === option.value ? ' active' : ''}`}
+                            onClick={() => setChatFontSize(option.value)}
+                        >
+                            {option.label}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="cf-preview" style={{ fontFamily: chatFont, fontSize: `${chatFontSize}px` }}>
+                    So sieht dein Chat aus — <code>const antwort = await krebsi.hilf(mir);</code>
                 </div>
             </section>
 
@@ -137,4 +177,10 @@ export const PAGE_CSS = `
     background: var(--cf-success); color: #fff; white-space: nowrap;
 }
 .cf-badge.muted { background: var(--cf-border-strong); color: var(--cf-fg-muted); }
+.cf-btn-secondary.active { border-color: var(--cf-accent); color: var(--cf-accent); }
+.cf-range { flex: 1; accent-color: var(--cf-accent); cursor: pointer; }
+.cf-preview code {
+    background: var(--cf-code-bg); border-radius: 3px; padding: 1px 4px;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
 `;

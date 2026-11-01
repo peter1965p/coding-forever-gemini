@@ -33,8 +33,10 @@ export function buildSystemPrompt(options: {
     editor?: EditorContext;
     workspaceName: string;
     autoAccept: boolean;
+    /** Anzahl zusätzlicher Tools aus MCP-Servern. */
+    mcpToolCount?: number;
 }): string {
-    const { agentMode, editor, workspaceName, autoAccept } = options;
+    const { agentMode, editor, workspaceName, autoAccept, mcpToolCount = 0 } = options;
     const activeFile = editor?.fileName ?? 'keine';
 
     if (!agentMode) {
@@ -70,6 +72,12 @@ export function buildSystemPrompt(options: {
         '5. Ändere ausschließlich, was die Aufgabe verlangt. Keine Umformatierungen nebenbei.',
         '6. Datei- und Terminal-Aktionen laufen immer über die Tools, niemals als Code-Block im Text.',
         '7. Am Ende in zwei bis drei Sätzen zusammenfassen, was du geändert hast.',
+        mcpToolCount > 0
+            ? `\nZusätzlich stehen ${mcpToolCount} Tools aus MCP-Servern bereit (Präfix "mcp__").`
+            + ' Nutze sie, wenn sie besser passen als die eingebauten — etwa für Dienste'
+            + ' außerhalb des Workspace. Rate nicht, welche Argumente ein MCP-Tool erwartet:'
+            + ' halte dich genau an sein Schema.'
+            : '',
         '',
         `Workspace: ${workspaceName}`,
         `Aktive Datei im Editor: ${activeFile}`,

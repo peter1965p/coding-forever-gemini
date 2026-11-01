@@ -4,6 +4,46 @@ All notable changes to the "coding-forever" extension will be documented in this
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [3.0.0]
+
+**MCP ist da.** Das Feld in der AI Engine speicherte seit Monaten eine Konfiguration, die niemand gelesen hat — das war das einzige Versprechen, das die Extension nicht gehalten hat. Jetzt startet Coding Forever die eingetragenen Server wirklich, holt ihre Tools ab und stellt sie dem Agenten zur Verfügung.
+
+### Model Context Protocol
+
+* **Echter MCP-Client** über das offizielle SDK, mit stdio- und Streamable-HTTP-Transport. Das Konfigurationsformat ist dasselbe wie bei Claude Desktop und den übrigen Clients (`{ "mcpServers": { ... } }`), bestehende Konfigurationen lassen sich also direkt übernehmen — inklusive `env`, `cwd`, `args` und `disabled`.
+* **MCP-Tools sind gleichberechtigt.** Sie landen zusammen mit den eingebauten im selben Agent-Loop und funktionieren dadurch sofort bei allen fünf Anbietern — Gemini, Groq, Claude, OpenAI und Ollama. Kein Anbieter braucht Sonderbehandlung.
+* **Eindeutige Namen:** Tools werden als `mcp__<server>__<tool>` eingehängt, damit zwei Server dasselbe Tool anbieten können, ohne sich gegenseitig zu überschreiben.
+* **Rückfrage bei schreibenden Tools.** Ob ein Tool nur liest, sagt der Server über `readOnlyHint`; alles andere wird bei ausgeschaltetem **Accept All** einzeln bestätigt, mit sichtbaren Argumenten.
+* **Server-Status in der AI Engine:** welcher Server läuft, über welchen Transport, mit wie vielen Tools — und bei einem Fehlschlag die Meldung im Klartext statt stillem Nichts. Dazu ein Protokoll-Kanal („Coding Forever" in der Ausgabe) und der Befehl `MCP-Server neu verbinden`.
+* **Sauberer Lebenszyklus:** Beim Speichern werden nur geänderte Server neu gestartet, entfernte beendet, unveränderte laufen weiter. Ein Server, der gar nicht startet, blockiert die anderen nicht; Verbindungsaufbau läuft nach 30 s in einen Timeout statt ewig zu hängen.
+
+### Hilfe-System
+
+* **Neuer Tab „Hilfe"** mit elf Themen — Schnellstart, Chat-Bedienung, Agent und Werkzeuge, Kontrolle und Sicherheit, Anbieter, MCP, Prompt-Bibliothek, Befehle, Einstellungen, Datenablage und Problemlösung. Volltextsuche über Titel, Schlagworte und Fließtext; bei aktiver Suche klappen alle Treffer auf.
+* **Statuscheck statt Prosa.** Oben auf der Seite steht nicht, wie es gehen sollte, sondern was bei dir gerade fehlt: konfigurierte Anbieter, geladene Modelle, verbundene MCP-Server, offenes Projekt. Jeder Befund kommt mit dem passenden nächsten Schritt als Knopf — „AI Engine öffnen", „Neu laden", „Protokoll".
+* **Erreichbar von überall:** Fragezeichen in der Chat-Leiste, Symbol in der Seitenleisten-Titelzeile, Befehl `Coding Forever: Hilfe öffnen`.
+* **Hinweis statt Sackgasse:** Ist gar kein Anbieter eingerichtet, zeigt der Chat das direkt an — mit Knöpfen zur AI Engine und zur Hilfe, statt den Nutzer in eine Fehlermeldung laufen zu lassen.
+* MCP-Beispielkonfigurationen lassen sich aus der Hilfe heraus kopieren.
+
+### Tool-Schemata
+
+* **Neue Schema-Schicht** (`src/providers/schema.ts`). Die eingebauten Tools hatten flache Parameter — nur Strings, Zahlen, Booleans. MCP-Server liefern beliebiges JSON Schema mit verschachtelten Objekten, Arrays und Enums, das vorher niemand hätte übersetzen können.
+* Groq, OpenAI, Ollama und Claude bekommen das JSON Schema direkt. Für **Gemini** gibt es einen rekursiven Übersetzer in dessen eigenen Dialekt: Typen in Großbuchstaben, `type: ["string","null"]` → `nullable`, und alle Keywords raus, die Google mit „Invalid JSON payload" quittiert (`$schema`, `additionalProperties`, `pattern`, `default`, `oneOf` …).
+
+### Behoben
+
+* **Fehlgeschlagene Läufe verschwanden aus dem Verlauf.** Fehler und Abbrüche wurden nur ins Fenster geschrieben, nie gespeichert — nach einem Reload stand dort eine Frage ohne Antwort. In der Datenbank standen dadurch seit 2.9.0 zehn Fragen gegen fünf Antworten. Fehlschläge landen jetzt sichtbar im Verlauf.
+
+### Darstellung
+
+* **Schriftgröße ist einstellbar** (9–18 px, mit Vorauswahl von „Sehr kompakt" bis „Sehr groß"). Text **und** Abstände skalieren gemeinsam, weil das Chat-Layout jetzt durchgehend in `em` gegen eine Basisgröße rechnet statt mit zwei Dutzend fest verdrahteten Pixelwerten. In der schmalen Sidebar war die Standardgröße schlicht zu groß.
+
+### Intern
+
+* `src/mcp/` mit Konfigurations-Parser und Verbindungsmanager.
+* Der Agent-Loop kennt `executeTool` jetzt als Callback statt die eingebauten Tools direkt zu importieren — das Routing zwischen eingebaut und MCP macht der Aufrufer.
+* **77 Unit-Tests** (vorher 37). Neu dabei: ein echter MCP-Server als Fixture, gegen den Verbindungsaufbau, Tool-Liste, verschachtelte Argumente, Fehlerfälle und der Lebenszyklus getestet werden — weiterhin ohne VS-Code-Download. Dazu Prüfungen auf die Hilfe-Inhalte selbst: eindeutige IDs, vollständige Tabellenzeilen und gültiges JSON in jedem Beispiel.
+
 ## [2.9.0]
 
 Größtes Release seit 2.0 — der Chat hat jetzt ein Gedächtnis, streamt, lässt sich stoppen, und der Agent kann sein eigenes Ergebnis prüfen.

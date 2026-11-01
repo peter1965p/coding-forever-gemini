@@ -1,4 +1,5 @@
 import { readErrorMessage, readSse } from '../lib/stream';
+import { toJsonSchema } from './schema';
 import {
     AgentMessage, ChatRequest, ChatResult, LlmProvider, ModelInfo, parseToolArgs,
     ProviderError, ToolCall, ToolDef, ToolsUnsupportedError
@@ -11,16 +12,7 @@ export function toOpenAiTools(tools: ToolDef[]): any[] {
         function: {
             name: tool.name,
             description: tool.description,
-            parameters: {
-                type: 'object',
-                properties: Object.fromEntries(
-                    Object.entries(tool.parameters).map(([key, param]) => [
-                        key,
-                        { type: param.type, description: param.description }
-                    ])
-                ),
-                required: tool.required
-            }
+            parameters: toJsonSchema(tool)
         }
     }));
 }

@@ -4,6 +4,7 @@ import { AiSettings } from './AiSettings';
 import { Chat } from './chat';
 import { Dashboard } from './Dashboard';
 import { PromptManager } from './PromptManager';
+import { Help } from './Help';
 import { Settings } from './Settings';
 import { bootstrap } from '../lib/vscodeApi';
 import { THEME_CSS } from '../lib/theme';
@@ -12,7 +13,8 @@ const TABS = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'prompts', label: 'Prompt Library' },
     { id: 'ai-settings', label: 'AI Engine' },
-    { id: 'settings', label: 'Einstellungen' }
+    { id: 'settings', label: 'Einstellungen' },
+    { id: 'help', label: 'Hilfe' }
 ];
 
 const App: React.FC = () => {
@@ -55,6 +57,7 @@ const App: React.FC = () => {
                 {activeTab === 'prompts' && <PromptManager />}
                 {activeTab === 'ai-settings' && <AiSettings />}
                 {activeTab === 'settings' && <Settings />}
+                {activeTab === 'help' && <Help />}
             </main>
         </div>
     );

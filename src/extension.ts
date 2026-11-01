@@ -5,7 +5,8 @@ import { generateChatTitle, isAbortError, runAgentLoop } from './agent/loop';
 import {
     applyTemplatePlaceholders, buildSystemPrompt, expandFileMentions, readEditorContext
 } from './agent/prompt';
-import { AGENT_TOOLS, ToolContext } from './agent/tools';
+import { AGENT_TOOLS, executeTool, ToolContext, toolStatusLabel } from './agent/tools';
+import { McpManager } from './mcp/manager';
 import { ChatMessage, PromptDatabaseManager } from './lib/database';
 import { getAgentLimits, SettingsStore } from './lib/settings';
 import { getWebviewHtml } from './lib/webview';
@@ -18,6 +19,7 @@ import { checkForGitHubUpdates } from './system/updates';
 interface Deps {
     settings: SettingsStore;
     dbManager: PromptDatabaseManager;
+    mcp: McpManager;
 }
 
 type MessageTarget = { webview: vscode.Webview };
@@ -42,7 +44,20 @@ export async function activate(context: vscode.ExtensionContext) {
     const dbManager = await PromptDatabaseManager.getInstance(context);
     context.subscriptions.push({ dispose: () => dbManager.dispose() });
 
-    const deps: Deps = { settings, dbManager };
+    const output = vscode.window.createOutputChannel('Coding Forever');
+    context.subscriptions.push(output);
+
+    const mcp = new McpManager(message => output.appendLine(`[MCP] ${message}`));
+    context.subscriptions.push({ dispose: () => void mcp.disposeAll() });
+
+    const deps: Deps = { settings, dbManager, mcp };
+
+    // Konfigurierte MCP-Server im Hintergrund hochfahren, damit die Tools beim
+    // ersten Agent-Lauf schon bereitstehen.
+    const mcpConfig = settings.getPreferences().mcpConfig;
+    if (mcpConfig.trim()) {
+        void syncMcp(deps).catch(error => output.appendLine(`[MCP] Start fehlgeschlagen: ${error}`));
+    }
 
     registerDiffProvider(context);
     await handleDataMigration(context);
@@ -58,10 +73,42 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('coding-forever.openSettings', () =>
             CodingForeverPanel.createOrShow(context, deps, 'settings')),
 
+        vscode.commands.registerCommand('coding-forever.openHelp', () =>
+            CodingForeverPanel.createOrShow(context, deps, 'help')),
+
         vscode.commands.registerCommand('coding-forever.createProject', () => createProject()),
 
         vscode.commands.registerCommand('coding-forever.checkUpdates', () =>
             checkForGitHubUpdates(context, true)),
+
+        vscode.commands.registerCommand('coding-forever.reconnectMcp', async () => {
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: 'Verbinde MCP-Server...' },
+                () => syncMcp(deps)
+            );
+            const statuses = mcp.getStatuses();
+            const connected = statuses.filter(s => s.state === 'connected');
+            const failed = statuses.filter(s => s.state === 'error');
+            const tools = connected.reduce((sum, s) => sum + s.toolCount, 0);
+
+            if (statuses.length === 0) {
+                vscode.window.showInformationMessage(
+                    'Keine MCP-Server konfiguriert. Unter "AI Engine" eintragen.'
+                );
+            } else if (failed.length > 0) {
+                const action = await vscode.window.showWarningMessage(
+                    `MCP: ${connected.length} verbunden (${tools} Tools), ${failed.length} fehlgeschlagen.`,
+                    'Protokoll zeigen'
+                );
+                if (action === 'Protokoll zeigen') { output.show(); }
+            } else {
+                vscode.window.showInformationMessage(
+                    `MCP: ${connected.length} Server verbunden, ${tools} Tools verfügbar.`
+                );
+            }
+        }),
+
+        vscode.commands.registerCommand('coding-forever.showLog', () => output.show()),
 
         vscode.commands.registerCommand('codingForever.openHistory', async () => {
             if (activeSidebarView) {
@@ -174,6 +221,15 @@ export function deactivate() {
 }
 
 /**
+ * Verbindungen mit der gespeicherten Konfiguration abgleichen und alle offenen
+ * Fenster über das Ergebnis informieren.
+ */
+async function syncMcp(deps: Deps): Promise<void> {
+    const statuses = await deps.mcp.sync(deps.settings.getPreferences().mcpConfig);
+    broadcast({ type: 'mcpStatus', servers: statuses });
+}
+
+/**
  * Sidebar öffnen und den Prompt dort vorbelegen.
  * Nach dem focus-Command dauert es einen Moment, bis resolveWebviewView gelaufen
  * ist — ohne das Warten ging die erste Nachricht nach einem Neustart verloren.
@@ -271,6 +327,24 @@ async function handleWebviewMessage(
 
             case 'getModels': {
                 post({ type: 'modelsLoaded', groups: await listAllModels(await settings.getCredentials()) });
+                return;
+            }
+
+            case 'getMcpStatus': {
+                post({ type: 'mcpStatus', servers: settings.getPreferences().mcpConfig.trim()
+                    ? deps.mcp.getStatuses()
+                    : [] });
+                return;
+            }
+
+            case 'reconnectMcp': {
+                post({ type: 'mcpSyncing' });
+                await syncMcp(deps);
+                return;
+            }
+
+            case 'showLog': {
+                await vscode.commands.executeCommand('coding-forever.showLog');
                 return;
             }
 
@@ -380,6 +454,8 @@ async function handleWebviewMessage(
                 return await CodingForeverPanel.createOrShow(context, deps, 'dashboard');
             case 'openSettings':
                 return await CodingForeverPanel.createOrShow(context, deps, 'settings');
+            case 'openHelp':
+                return await CodingForeverPanel.createOrShow(context, deps, 'help');
             case 'createProject':
                 return await createProject();
             case 'checkUpdates':
@@ -418,6 +494,13 @@ async function handleWebviewMessage(
                 const updated = await settings.getPublicSettings();
                 broadcast({ type: 'settings', settings: updated });
                 broadcast({ type: 'modelsLoaded', groups: await listAllModels(await settings.getCredentials()) });
+
+                // Geänderte MCP-Konfiguration sofort übernehmen: neue Server
+                // starten, entfernte beenden, unveränderte weiterlaufen lassen.
+                if (msg.prefs && 'mcpConfig' in msg.prefs) {
+                    broadcast({ type: 'mcpSyncing' });
+                    await syncMcp(deps);
+                }
                 return;
             }
 
@@ -519,6 +602,9 @@ async function handleChat(target: MessageTarget, deps: Deps, msg: any): Promise<
     const controller = new AbortController();
     activeRuns.set(target.webview, controller);
 
+    // Wird im catch gebraucht, um den Fehlschlag in der Session zu protokollieren.
+    let activeSessionId: string | undefined = msg.sessionId || undefined;
+
     try {
         const workspaceName = getWorkspaceName();
         let sessionId: string = msg.sessionId;
@@ -527,6 +613,7 @@ async function handleChat(target: MessageTarget, deps: Deps, msg: any): Promise<
             sessionId = session.id;
             post({ type: 'sessionInitialized', sessionId, title: session.title });
         }
+        activeSessionId = sessionId;
 
         const limits = getAgentLimits();
         // Verlauf VOR dem Speichern der aktuellen Frage laden, sonst steht sie doppelt drin.
@@ -545,7 +632,9 @@ async function handleChat(target: MessageTarget, deps: Deps, msg: any): Promise<
         const agentMode = msg.agentMode !== false;
         const autoAccept = msg.autoAccept === true;
 
-        let tools = agentMode ? AGENT_TOOLS : null;
+        // MCP-Tools kommen gleichberechtigt zu den eingebauten dazu.
+        const mcpTools = agentMode ? deps.mcp.getTools() : [];
+        let tools = agentMode ? [...AGENT_TOOLS, ...mcpTools] : null;
         if (tools && resolved.toolsUnsupported) {
             tools = null;
             post({
@@ -557,7 +646,9 @@ async function handleChat(target: MessageTarget, deps: Deps, msg: any): Promise<
         post({
             type: 'status',
             text: `${PROVIDER_ICONS[resolved.providerId] ?? '🤖'} ${resolved.provider.label} · ${resolved.model}`
-                + `${tools ? ' · Agent' : ''}`
+                + `${tools ? ` · Agent (${tools.length} Tools` : ''}`
+                + `${tools && mcpTools.length > 0 ? `, davon ${mcpTools.length} über MCP` : ''}`
+                + `${tools ? ')' : ''}`
         });
 
         const toolContext: ToolContext = {
@@ -567,17 +658,46 @@ async function handleChat(target: MessageTarget, deps: Deps, msg: any): Promise<
             showDiff: showCodeDiff
         };
 
+        // Eingebaute und MCP-Tools laufen über denselben Weg; der Loop sieht
+        // keinen Unterschied, nur das Routing hier unterscheidet.
+        const runTool = async (name: string, args: Record<string, any>): Promise<any> => {
+            if (!deps.mcp.isMcpTool(name)) {
+                return executeTool(name, args, toolContext);
+            }
+
+            // Schreibende MCP-Tools ohne AutoAccept bestätigen lassen. Welche
+            // nur lesen, sagt der Server selbst über readOnlyHint.
+            if (!autoAccept && !deps.mcp.isReadOnly(name)) {
+                const preview = JSON.stringify(args ?? {}).slice(0, 400);
+                const allowed = await confirmAction(
+                    `MCP-Tool ausführen?\n\n${deps.mcp.describe(name)}\n${preview}`
+                );
+                if (!allowed) { return { error: 'Vom Nutzer abgelehnt.' }; }
+            }
+
+            return deps.mcp.callTool(name, args, controller.signal);
+        };
+
+        const labelTool = (name: string, args: Record<string, any>): string =>
+            deps.mcp.isMcpTool(name)
+                ? `🔌 ${deps.mcp.describe(name)}...`
+                : toolStatusLabel(name, args);
+
         let blockId = '';
         const result = await runAgentLoop({
             provider: resolved.provider,
             model: resolved.model,
-            system: buildSystemPrompt({ agentMode, editor: editorContext, workspaceName, autoAccept }),
+            system: buildSystemPrompt({
+                agentMode, editor: editorContext, workspaceName, autoAccept,
+                mcpToolCount: tools ? mcpTools.length : 0
+            }),
             history,
             prompt,
             tools,
             maxTurns: limits.maxTurns,
             signal: controller.signal,
-            toolContext,
+            executeTool: runTool,
+            toolStatusLabel: labelTool,
             onTurnStart: () => {
                 blockId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
                 post({ type: 'assistantStart', id: blockId });
@@ -594,17 +714,32 @@ async function handleChat(target: MessageTarget, deps: Deps, msg: any): Promise<
 
         if (result.aborted) {
             post({ type: 'status', text: '⏹️ Abgebrochen.' });
+            if (!result.text.trim()) {
+                await dbManager.addMessage(sessionId, 'assistant', '_(abgebrochen)_');
+            }
         }
 
         await maybeGenerateTitle(target, deps, sessionId, filledPrompt, result.text, resolved);
     } catch (error: any) {
+        const text = isAbortError(error)
+            ? '⏹️ Abgebrochen.'
+            : error instanceof ProviderError
+                ? error.message
+                : `Unerwarteter Fehler: ${error.message}`;
+
         if (isAbortError(error)) {
-            post({ type: 'status', text: '⏹️ Abgebrochen.' });
-        } else if (error instanceof ProviderError) {
-            post({ type: 'error', text: error.message });
+            post({ type: 'status', text });
         } else {
             console.error('Coding Forever: Chat fehlgeschlagen:', error);
-            post({ type: 'error', text: `Unerwarteter Fehler: ${error.message}` });
+            post({ type: 'error', text });
+        }
+
+        // Fehlschläge gehören in den Verlauf. Vorher verschwand die Meldung beim
+        // Neuladen und zurück blieb eine Frage ohne Antwort.
+        if (activeSessionId) {
+            try {
+                await dbManager.addMessage(activeSessionId, 'assistant', `⚠️ ${text}`);
+            } catch { /* Fehler beim Protokollieren des Fehlers ist egal */ }
         }
     } finally {
         if (activeRuns.get(target.webview) === controller) {
@@ -724,7 +859,8 @@ class CodingForeverPanel {
         const titles: Record<string, string> = {
             chat: 'Coding Forever Chat',
             dashboard: 'Coding Forever Dashboard',
-            settings: 'Coding Forever Einstellungen'
+            settings: 'Coding Forever Einstellungen',
+            help: 'Coding Forever Hilfe'
         };
 
         const panel = vscode.window.createWebviewPanel(

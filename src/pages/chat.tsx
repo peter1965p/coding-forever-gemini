@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Check, Copy, Download, FileDiff, History, LayoutDashboard, Settings as SettingsIcon,
-    SquarePen, SquareStop, Trash2, Wand2
+    Check, CircleQuestionMark, Copy, Download, FileDiff, History, LayoutDashboard,
+    Settings as SettingsIcon, SquarePen, SquareStop, Trash2, Wand2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -472,8 +472,19 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
 
     const hasAnyModel = modelGroups.some(group => group.models.length > 0);
 
+    // Ohne Anbieter läuft gar nichts — dann lieber einen Weg nach vorn zeigen
+    // als den Nutzer gegen eine Fehlermeldung laufen lassen.
+    const hasAnyProvider = settings.hasGeminiKey || settings.hasGroqKey
+        || settings.hasClaudeKey || settings.hasOpenaiKey || settings.localEnabled;
+
     return (
-        <div className="cf-root" style={{ fontFamily: settings.chatFont || 'var(--vscode-font-family)' }}>
+        <div
+            className="cf-root"
+            style={{
+                fontFamily: settings.chatFont || 'var(--vscode-font-family)',
+                ['--cf-fs' as any]: `${settings.chatFontSize || 12}px`
+            }}
+        >
             <style>{THEME_CSS}{CHAT_CSS}</style>
 
             {showHistory && (
@@ -521,6 +532,9 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
                     <button className="cf-icon" onClick={() => setShowHistory(prev => !prev)} title="Verlauf">
                         <History size={15} />
                     </button>
+                    <button className="cf-icon" onClick={() => post({ type: 'openHelp' })} title="Hilfe">
+                        <CircleQuestionMark size={15} />
+                    </button>
                     <span className="cf-brand">Agentic Chat</span>
                 </div>
                 <div className="cf-flags">
@@ -528,6 +542,20 @@ export const Chat: React.FC<ChatProps> = ({ extName = 'Coding Forever', userName
                     <span className={autoAccept ? 'on' : 'off'}>Accept</span>
                 </div>
             </header>
+
+            {!hasAnyProvider && (
+                <div className="cf-onboarding">
+                    <strong>Noch kein Anbieter eingerichtet.</strong>
+                    <span>
+                        Trage unter <em>AI Engine</em> einen API-Key ein — Gemini und Groq sind
+                        kostenlos — oder schalte lokale Modelle über Ollama frei.
+                    </span>
+                    <div className="cf-onboarding-actions">
+                        <button onClick={() => post({ type: 'openSettings' })}>AI Engine öffnen</button>
+                        <button onClick={() => post({ type: 'openHelp' })}>Hilfe</button>
+                    </div>
+                </div>
+            )}
 
             <div className="cf-messages" ref={scrollRef} onScroll={handleScroll}>
                 {messages.map(message => {
@@ -640,7 +668,9 @@ const CHAT_CSS = `
     box-sizing: border-box;
     background: var(--cf-bg);
     color: var(--cf-fg);
-    font-size: 12px;
+    /* Eine Basisgroesse, alle Kindelemente rechnen in em dagegen —
+       damit die Einstellung "Schriftgroesse" wirklich alles skaliert. */
+    font-size: var(--cf-fs, 12px);
 }
 .cf-header {
     display: flex; justify-content: space-between; align-items: center;
@@ -648,11 +678,11 @@ const CHAT_CSS = `
     background: var(--cf-bg-elev); border-bottom: 1px solid var(--cf-border);
 }
 .cf-brand {
-    margin-left: 6px; font-weight: 700; text-transform: uppercase; font-size: 11px;
+    margin-left: 6px; font-weight: 700; text-transform: uppercase; font-size: 0.92em;
     background-image: linear-gradient(to bottom, #fed7aa, var(--cf-accent), #431407);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
-.cf-flags { display: flex; gap: 8px; font-size: 10px; }
+.cf-flags { display: flex; gap: 8px; font-size: 0.84em; }
 .cf-flags .on { color: var(--cf-success); }
 .cf-flags .off { color: var(--cf-fg-muted); }
 .cf-icon, .cf-icon-flat {
@@ -662,20 +692,35 @@ const CHAT_CSS = `
 }
 .cf-icon { border-color: var(--cf-border); }
 .cf-icon:hover, .cf-icon-flat:hover { background: var(--cf-bg-hover); color: var(--cf-accent); }
+.cf-onboarding {
+    flex-shrink: 0; margin: 0.85em 1em 0; padding: 0.85em 1em; border-radius: 6px;
+    display: flex; flex-direction: column; gap: 0.5em; font-size: 0.95em; line-height: 1.5;
+    background: var(--cf-bg-elev); border: 1px solid var(--cf-accent);
+}
+.cf-onboarding span { color: var(--cf-fg-muted); }
+.cf-onboarding-actions { display: flex; gap: 0.5em; }
+.cf-onboarding-actions button {
+    padding: 0.35em 0.9em; border-radius: 4px; cursor: pointer; font-size: 0.92em;
+    font-family: inherit; background: transparent; color: var(--cf-fg);
+    border: 1px solid var(--cf-border);
+}
+.cf-onboarding-actions button:first-child {
+    background: var(--cf-accent); color: #fff; border-color: var(--cf-accent); font-weight: 600;
+}
 .cf-messages {
-    flex: 1; overflow-y: auto; padding: 12px;
-    display: flex; flex-direction: column; gap: 10px;
+    flex: 1; overflow-y: auto; padding: 1em;
+    display: flex; flex-direction: column; gap: 0.85em;
 }
 .cf-bubble {
-    padding: 10px 12px; border-radius: 8px; max-width: 88%;
+    padding: 0.8em 1em; border-radius: 8px; max-width: 88%;
     word-break: break-word; overflow-wrap: anywhere;
     border: 1px solid var(--cf-border);
 }
 .cf-bubble.user { align-self: flex-end; background: var(--cf-bubble-user); }
 .cf-bubble.ai { align-self: flex-start; background: var(--cf-bubble-ai); }
-.cf-status { font-size: 11px; color: var(--cf-fg-muted); font-style: italic; align-self: flex-start; }
+.cf-status { font-size: 0.92em; color: var(--cf-fg-muted); font-style: italic; align-self: flex-start; }
 .cf-error {
-    font-size: 11.5px; align-self: flex-start; max-width: 88%;
+    font-size: 0.95em; align-self: flex-start; max-width: 88%;
     color: var(--cf-danger); border: 1px solid var(--cf-danger);
     border-radius: 6px; padding: 8px 10px; background: color-mix(in srgb, var(--cf-danger) 10%, transparent);
 }
@@ -697,18 +742,18 @@ const CHAT_CSS = `
 }
 .cf-md hr { border: none; border-top: 1px solid var(--cf-border); margin: 10px 0; }
 .cf-h { margin: 10px 0 6px; line-height: 1.3; }
-.cf-h1 { font-size: 15px; color: var(--cf-accent); }
-.cf-h2 { font-size: 14px; }
-.cf-h3 { font-size: 13px; }
+.cf-h1 { font-size: 1.25em; color: var(--cf-accent); }
+.cf-h2 { font-size: 1.15em; }
+.cf-h3 { font-size: 1.08em; }
 .cf-inline-code {
     background: var(--cf-code-bg); border: 1px solid var(--cf-border);
-    border-radius: 3px; padding: 1px 4px; font-size: 11px;
+    border-radius: 3px; padding: 1px 4px; font-size: 0.92em;
     font-family: var(--vscode-editor-font-family, monospace);
 }
 .cf-link { color: var(--cf-accent); text-decoration: none; }
 .cf-link:hover { text-decoration: underline; }
 .cf-table-wrap { overflow-x: auto; margin-bottom: 8px; }
-.cf-table-wrap table { border-collapse: collapse; font-size: 11px; }
+.cf-table-wrap table { border-collapse: collapse; font-size: 0.92em; }
 .cf-table-wrap th, .cf-table-wrap td {
     border: 1px solid var(--cf-border); padding: 4px 8px; text-align: left;
 }
@@ -724,7 +769,7 @@ const CHAT_CSS = `
     padding: 4px 6px 4px 10px; border-bottom: 1px solid var(--cf-border);
 }
 .cf-code-lang {
-    font-size: 10px; color: var(--cf-fg-muted);
+    font-size: 0.84em; color: var(--cf-fg-muted);
     font-family: var(--vscode-editor-font-family, monospace);
 }
 
@@ -737,7 +782,7 @@ const CHAT_CSS = `
 }
 .cf-drawer-head {
     display: flex; justify-content: space-between; align-items: center;
-    font-weight: 600; font-size: 12px; margin-bottom: 12px;
+    font-weight: 600; font-size: 1em; margin-bottom: 12px;
 }
 .cf-history-item {
     display: flex; align-items: flex-start; gap: 6px;
@@ -746,11 +791,11 @@ const CHAT_CSS = `
 }
 .cf-history-item:hover { border-color: var(--cf-accent); background: var(--cf-bg-hover); }
 .cf-history-title {
-    font-size: 11.5px; font-weight: 500; margin-bottom: 2px;
+    font-size: 0.95em; font-weight: 500; margin-bottom: 2px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cf-history-date { font-size: 10px; color: var(--cf-fg-muted); }
-.cf-empty { font-size: 11.5px; color: var(--cf-fg-muted); text-align: center; margin-top: 20px; }
+.cf-history-date { font-size: 0.84em; color: var(--cf-fg-muted); }
+.cf-empty { font-size: 0.95em; color: var(--cf-fg-muted); text-align: center; margin-top: 20px; }
 
 /* --- Eingabe --- */
 .cf-input-area {
@@ -760,7 +805,7 @@ const CHAT_CSS = `
 }
 .cf-textarea {
     width: 100%; box-sizing: border-box; resize: none; min-height: 46px; max-height: 180px;
-    padding: 7px 9px; border-radius: 6px; font-size: 12px; font-family: inherit;
+    padding: 7px 9px; border-radius: 6px; font-size: 1em; font-family: inherit;
     background: var(--cf-bg-input); color: var(--cf-fg); border: 1px solid var(--cf-border);
 }
 .cf-textarea:focus { outline: none; border-color: var(--cf-accent); }
@@ -770,26 +815,26 @@ const CHAT_CSS = `
     max-height: 220px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 .cf-popover-item {
-    padding: 7px 10px; cursor: pointer; font-size: 11px;
+    padding: 7px 10px; cursor: pointer; font-size: 0.92em;
     border-bottom: 1px solid var(--cf-border);
 }
 .cf-popover-item:last-child { border-bottom: none; }
 .cf-popover-item:hover { background: var(--cf-bg-hover); }
 .cf-popover-item strong { color: var(--cf-accent); display: block; }
-.cf-popover-item span { color: var(--cf-fg-muted); font-size: 10px; }
+.cf-popover-item span { color: var(--cf-fg-muted); font-size: 0.84em; }
 .cf-controls {
     display: flex; justify-content: space-between; align-items: center;
     gap: 8px; flex-wrap: wrap;
 }
 .cf-select {
-    background: var(--cf-bg-input); color: var(--cf-fg); font-size: 11px;
+    background: var(--cf-bg-input); color: var(--cf-fg); font-size: 0.92em;
     border: 1px solid var(--cf-border); border-radius: 4px; padding: 3px 5px;
     max-width: 46%;
 }
 .cf-toggles { display: flex; align-items: center; gap: 10px; }
 .cf-toggle {
     display: flex; align-items: center; gap: 5px;
-    font-size: 11px; color: var(--cf-fg-muted); cursor: pointer;
+    font-size: 0.92em; color: var(--cf-fg-muted); cursor: pointer;
 }
 .cf-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
 .cf-slider {
@@ -807,7 +852,7 @@ const CHAT_CSS = `
 .cf-send {
     display: flex; align-items: center; gap: 4px;
     background: var(--cf-accent); color: #fff; border: none; cursor: pointer;
-    padding: 6px 14px; border-radius: 4px; font-size: 11px; font-weight: 700;
+    padding: 6px 14px; border-radius: 4px; font-size: 0.92em; font-weight: 700;
 }
 .cf-send:hover:not(:disabled) { background: var(--cf-accent-hover); }
 .cf-send:disabled { opacity: 0.45; cursor: default; }

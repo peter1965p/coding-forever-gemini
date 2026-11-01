@@ -1,8 +1,8 @@
 {
     "name": "coding-forever",
     "displayName": "Coding Forever",
-    "description": "Agentischer KI-Chat in VS Code: Gemini, Groq, Claude, OpenAI und lokale Ollama-Modelle mit Streaming, Datei-Tools und Diff-Kontrolle.",
-    "version": "2.9.0",
+    "description": "Agentischer KI-Chat in VS Code: Gemini, Groq, Claude, OpenAI und lokale Ollama-Modelle — mit MCP-Servern, Streaming, Datei-Tools und Diff-Kontrolle.",
+    "version": "3.0.0",
     "publisher": "PeterPaeffgen",
     "author": {
         "name": "Peter Päffgen",
@@ -66,6 +66,12 @@
                 "icon": "$(gear)"
             },
             {
+                "command": "coding-forever.openHelp",
+                "category": "Coding Forever",
+                "title": "Hilfe öffnen",
+                "icon": "$(question)"
+            },
+            {
                 "command": "coding-forever.createProject",
                 "category": "Coding Forever",
                 "title": "Node-Projekt erstellen",
@@ -96,6 +102,18 @@
                 "icon": "$(cloud-download)"
             },
             {
+                "command": "coding-forever.reconnectMcp",
+                "category": "Coding Forever",
+                "title": "MCP-Server neu verbinden",
+                "icon": "$(plug)"
+            },
+            {
+                "command": "coding-forever.showLog",
+                "category": "Coding Forever",
+                "title": "Protokoll anzeigen",
+                "icon": "$(output)"
+            },
+            {
                 "command": "codingForever.openHistory",
                 "category": "Coding Forever",
                 "title": "Chat-Verlauf ein-/ausblenden",
@@ -118,6 +136,11 @@
                     "command": "codingForever.openHistory",
                     "when": "view == codingForeverView",
                     "group": "navigation@3"
+                },
+                {
+                    "command": "coding-forever.openHelp",
+                    "when": "view == codingForeverView",
+                    "group": "navigation@4"
                 }
             ],
             "editor/context": [
@@ -199,6 +222,7 @@
         "serialize-javascript": "^7.0.6"
     },
     "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.32.2",
         "lucide-react": "^1.38.0",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
@@ -211,6 +235,8 @@
         "ai",
         "chat",
         "agent",
+        "model-context-protocol",
+        "mcp",
         "gemini",
         "groq",
         "claude",

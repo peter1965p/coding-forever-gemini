@@ -22,6 +22,29 @@ interface RecommendedModel {
     tag: string;
 }
 
+interface McpServerStatus {
+    name: string;
+    state: 'connected' | 'connecting' | 'error' | 'disabled';
+    transport: 'stdio' | 'http' | 'unbekannt';
+    toolCount: number;
+    toolNames: string[];
+    error?: string;
+}
+
+const MCP_EXAMPLE = JSON.stringify({
+    mcpServers: {
+        filesystem: {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-filesystem', '/home/peter/Dev']
+        },
+        github: {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-github'],
+            env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'ghp_...' }
+        }
+    }
+}, null, 2);
+
 type KeyName = 'geminiApiKey' | 'groqApiKey' | 'claudeApiKey' | 'openaiApiKey';
 
 interface KeyField {
@@ -75,6 +98,8 @@ export const AiSettings: React.FC = () => {
     const [clearKeys, setClearKeys] = useState<KeyName[]>([]);
     const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
     const [specs, setSpecs] = useState<SystemSpecs | null>(null);
+    const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+    const [mcpSyncing, setMcpSyncing] = useState(false);
     const [recommended, setRecommended] = useState<RecommendedModel[]>([]);
     const [saved, setSaved] = useState(false);
 
@@ -86,6 +111,7 @@ export const AiSettings: React.FC = () => {
     useEffect(() => {
         vscode.postMessage({ type: 'getModels' });
         vscode.postMessage({ type: 'scanSystem' });
+        vscode.postMessage({ type: 'getMcpStatus' });
 
         const handleMessage = (event: MessageEvent) => {
             const message = event.data;
@@ -103,6 +129,11 @@ export const AiSettings: React.FC = () => {
             } else if (message.type === 'systemSpecs') {
                 setSpecs(message.specs);
                 setRecommended(message.recommended || []);
+            } else if (message.type === 'mcpSyncing') {
+                setMcpSyncing(true);
+            } else if (message.type === 'mcpStatus') {
+                setMcpServers(message.servers || []);
+                setMcpSyncing(false);
             }
         };
 
@@ -113,6 +144,11 @@ export const AiSettings: React.FC = () => {
     const localGroup = useMemo(
         () => modelGroups.find(group => group.providerId === 'local'),
         [modelGroups]
+    );
+
+    const totalMcpTools = useMemo(
+        () => mcpServers.reduce((sum, server) => sum + server.toolCount, 0),
+        [mcpServers]
     );
 
     const handleSave = () => {
@@ -280,22 +316,77 @@ export const AiSettings: React.FC = () => {
 
             <section className="cf-card">
                 <div className="cf-card-head">
-                    <div className="cf-card-title" style={{ marginBottom: 0 }}>MCP Server</div>
+                    <div>
+                        <div className="cf-card-title" style={{ marginBottom: '2px' }}>
+                            MCP Server
+                            {totalMcpTools > 0 && <span className="cf-badge">{totalMcpTools} Tools aktiv</span>}
+                        </div>
+                        <div className="cf-hint" style={{ margin: 0 }}>
+                            Gibt dem Agenten zusätzliche Werkzeuge: Dateisystem, GitHub, Datenbanken, Websuche.
+                        </div>
+                    </div>
                     <a className="cf-key-link" href="https://modelcontextprotocol.io/clients"
                         target="_blank" rel="noreferrer">Verzeichnis ↗</a>
                 </div>
-                <p className="cf-hint">
-                    Wird bereits gespeichert, aber noch nicht vom Agenten ausgewertet — die
-                    MCP-Anbindung ist für ein kommendes Release vorgesehen.
-                </p>
+
                 <textarea
                     className="cf-input"
-                    rows={4}
+                    rows={6}
                     value={mcpConfig}
                     onChange={e => setMcpConfig(e.target.value)}
-                    placeholder={'{\n  "mcpServers": {\n    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/pfad"] }\n  }\n}'}
+                    placeholder={MCP_EXAMPLE}
                     style={{ fontFamily: 'var(--vscode-editor-font-family, monospace)', fontSize: '11px', resize: 'vertical' }}
                 />
+
+                <div className="cf-row" style={{ marginTop: '8px' }}>
+                    <button className="cf-btn-secondary" disabled={mcpSyncing}
+                        onClick={() => { setMcpSyncing(true); vscode.postMessage({ type: 'reconnectMcp' }); }}>
+                        {mcpSyncing ? 'Verbinde...' : 'Verbinden / Neu laden'}
+                    </button>
+                    {!mcpConfig.trim() && (
+                        <button className="cf-btn-secondary" onClick={() => setMcpConfig(MCP_EXAMPLE)}>
+                            Beispiel einfügen
+                        </button>
+                    )}
+                    <button className="cf-btn-secondary" style={{ marginLeft: 'auto' }}
+                        onClick={() => vscode.postMessage({ type: 'showLog' })}>
+                        Protokoll
+                    </button>
+                </div>
+
+                {mcpServers.length > 0 && (
+                    <div className="cf-mcp-list">
+                        {mcpServers.map(server => (
+                            <div key={server.name} className="cf-mcp-item">
+                                <span className={`cf-dot ${server.state}`} />
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                    <div className="cf-mcp-name">
+                                        {server.name}
+                                        <span className="cf-hint" style={{ margin: 0 }}>
+                                            {server.state === 'connected'
+                                                ? `${server.transport} · ${server.toolCount} Tools`
+                                                : server.state === 'disabled' ? 'deaktiviert'
+                                                : server.state === 'connecting' ? 'verbindet...' : 'Fehler'}
+                                        </span>
+                                    </div>
+                                    {server.state === 'connected' && server.toolNames.length > 0 && (
+                                        <div className="cf-hint" style={{ margin: 0 }}>
+                                            {server.toolNames.slice(0, 8).join(', ')}
+                                            {server.toolNames.length > 8 ? ` … +${server.toolNames.length - 8}` : ''}
+                                        </div>
+                                    )}
+                                    {server.error && <div className="cf-mcp-error">{server.error}</div>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                <p className="cf-hint" style={{ marginTop: '10px', marginBottom: 0 }}>
+                    ⚠️ Ein MCP-Server ist ein Programm, das auf deinem Rechner gestartet wird.
+                    Trage nur Server ein, denen du vertraust. Schreibende Tools fragen vor der
+                    Ausführung nach, solange <strong>Accept All</strong> aus ist.
+                </p>
             </section>
 
             <button className="cf-btn-primary" onClick={handleSave}>
@@ -335,4 +426,21 @@ const AI_CSS = `
     background: var(--cf-bg-input); border: 1px solid var(--cf-border);
 }
 .cf-rec-name { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.cf-mcp-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.cf-mcp-item {
+    display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 4px;
+    background: var(--cf-bg); border: 1px solid var(--cf-border);
+}
+.cf-mcp-name { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+.cf-mcp-error {
+    margin-top: 4px; font-size: 11px; color: var(--cf-danger);
+    word-break: break-word; font-family: var(--vscode-editor-font-family, monospace);
+}
+.cf-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+    background: var(--cf-border-strong);
+}
+.cf-dot.connected { background: var(--cf-success); }
+.cf-dot.error { background: var(--cf-danger); }
+.cf-dot.connecting { background: #f59e0b; }
 `;

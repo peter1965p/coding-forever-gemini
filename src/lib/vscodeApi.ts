@@ -15,6 +15,7 @@ export interface PublicSettings {
     mcpConfig: string;
     userName: string;
     chatFont: string;
+    chatFontSize: number;
     hasGeminiKey: boolean;
     hasGroqKey: boolean;
     hasClaudeKey: boolean;
@@ -43,6 +44,7 @@ const FALLBACK: Bootstrap = {
         mcpConfig: '',
         userName: '',
         chatFont: 'var(--vscode-font-family)',
+        chatFontSize: 12,
         hasGeminiKey: false,
         hasGroqKey: false,
         hasClaudeKey: false,

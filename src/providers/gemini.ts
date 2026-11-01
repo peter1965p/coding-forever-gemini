@@ -1,4 +1,5 @@
 import { readErrorMessage, readSse } from '../lib/stream';
+import { toGeminiSchema, toJsonSchema } from './schema';
 import {
     AgentMessage, ChatRequest, ChatResult, LlmProvider, ModelInfo, ProviderError, ToolCall, ToolDef
 } from './types';
@@ -23,20 +24,17 @@ function safeParse(raw: string): any {
 
 function toGeminiTools(tools: ToolDef[]): any[] {
     return [{
-        functionDeclarations: tools.map(tool => ({
-            name: tool.name,
-            description: tool.description,
-            parameters: {
-                type: 'OBJECT',
-                properties: Object.fromEntries(
-                    Object.entries(tool.parameters).map(([key, param]) => [
-                        key,
-                        { type: param.type.toUpperCase(), description: param.description }
-                    ])
-                ),
-                ...(tool.required.length > 0 ? { required: tool.required } : {})
-            }
-        }))
+        functionDeclarations: tools.map(tool => {
+            // Gemini hat einen eigenen Schema-Dialekt (Grossbuchstaben-Typen,
+            // nur eine Teilmenge der JSON-Schema-Keywords) — darum die Umwandlung
+            // statt das Schema roh durchzureichen wie bei den anderen Anbietern.
+            const schema = toGeminiSchema(toJsonSchema(tool));
+            return {
+                name: tool.name,
+                description: tool.description,
+                ...(schema.properties ? { parameters: schema } : {})
+            };
+        })
     }];
 }
 

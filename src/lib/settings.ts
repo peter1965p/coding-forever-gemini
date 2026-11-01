@@ -11,6 +11,8 @@ export interface Preferences {
     mcpConfig: string;
     userName: string;
     chatFont: string;
+    /** Basis-Schriftgroesse des Chats in px; alles andere skaliert relativ dazu. */
+    chatFontSize: number;
 }
 
 /**
@@ -32,7 +34,8 @@ const PREFERENCE_DEFAULTS: Preferences = {
     modelName: 'llama3.2',
     mcpConfig: '',
     userName: '',
-    chatFont: 'var(--vscode-font-family)'
+    chatFont: 'var(--vscode-font-family)',
+    chatFontSize: 12
 };
 
 export class SettingsStore {
@@ -76,7 +79,9 @@ export class SettingsStore {
             modelName: state.get<string>('modelName') || PREFERENCE_DEFAULTS.modelName,
             mcpConfig: state.get<string>('mcpConfig') ?? PREFERENCE_DEFAULTS.mcpConfig,
             userName: state.get<string>('userName') ?? PREFERENCE_DEFAULTS.userName,
-            chatFont: state.get<string>('chatFont') || PREFERENCE_DEFAULTS.chatFont
+            chatFont: state.get<string>('chatFont') || PREFERENCE_DEFAULTS.chatFont,
+            chatFontSize: Math.max(9, Math.min(20,
+                state.get<number>('chatFontSize') ?? PREFERENCE_DEFAULTS.chatFontSize))
         };
     }
 

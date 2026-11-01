@@ -1,4 +1,5 @@
 import { readErrorMessage, readSse } from '../lib/stream';
+import { toJsonSchema } from './schema';
 import {
     AgentMessage, ChatRequest, ChatResult, LlmProvider, ModelInfo, parseToolArgs,
     ProviderError, ToolCall, ToolDef
@@ -20,16 +21,7 @@ function toAnthropicTools(tools: ToolDef[]): any[] {
     return tools.map(tool => ({
         name: tool.name,
         description: tool.description,
-        input_schema: {
-            type: 'object',
-            properties: Object.fromEntries(
-                Object.entries(tool.parameters).map(([key, param]) => [
-                    key,
-                    { type: param.type, description: param.description }
-                ])
-            ),
-            required: tool.required
-        }
+        input_schema: toJsonSchema(tool)
     }));
 }
 

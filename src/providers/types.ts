@@ -38,8 +38,16 @@ export interface ToolParam {
 export interface ToolDef {
     name: string;
     description: string;
+    /** Flache Parameter — reicht für die eingebauten Tools. */
     parameters: Record<string, ToolParam>;
     required: string[];
+    /**
+     * Vollständiges JSON Schema, das `parameters` ersetzt. MCP-Server liefern
+     * beliebig verschachtelte Schemata, die sich nicht flach abbilden lassen.
+     */
+    inputSchema?: Record<string, any>;
+    /** Gesetzt bei Tools, die von einem MCP-Server stammen. */
+    source?: { kind: 'mcp'; server: string; remoteName: string; readOnly: boolean };
 }
 
 export interface ChatRequest {

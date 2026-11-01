@@ -1,7 +1,6 @@
 import {
     AgentMessage, ChatResult, LlmProvider, ProviderError, ToolDef, ToolsUnsupportedError
 } from '../providers/types';
-import { executeTool, ToolContext, toolStatusLabel } from './tools';
 
 export interface AgentRunOptions {
     provider: LlmProvider;
@@ -13,7 +12,13 @@ export interface AgentRunOptions {
     tools: ToolDef[] | null;
     maxTurns: number;
     signal: AbortSignal;
-    toolContext: ToolContext;
+    /**
+     * Führt einen Tool-Aufruf aus. Der Loop kennt den Unterschied zwischen
+     * eingebauten und MCP-Tools bewusst nicht — das Routing macht der Aufrufer.
+     */
+    executeTool(name: string, args: Record<string, any>): Promise<any>;
+    /** Beschriftung für die Statuszeile, bevor das Tool läuft. */
+    toolStatusLabel(name: string, args: Record<string, any>): string;
     /** Ein neuer Assistant-Block beginnt (pro Turn einer). */
     onTurnStart(): void;
     /** Gestreamtes Text-Fragment. */
@@ -101,8 +106,8 @@ export async function runAgentLoop(opts: AgentRunOptions): Promise<AgentRunResul
         for (const call of result.toolCalls) {
             if (opts.signal.aborted) { return { text: allText, aborted: true, turns: turn + 1 }; }
 
-            opts.onStatus(toolStatusLabel(call.name, call.args));
-            const toolResult = await executeTool(call.name, call.args, opts.toolContext);
+            opts.onStatus(opts.toolStatusLabel(call.name, call.args));
+            const toolResult = await opts.executeTool(call.name, call.args);
 
             messages.push({
                 role: 'tool',
